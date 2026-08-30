@@ -7,22 +7,20 @@
 
 ## 它能做什么
 
-> ⚠️ **当前状态**：全部为已设计/已规划，**代码尚未开始开发**。详见 `docs/03-roadmap.md` §1 状态表。
+> ✅ **v0.2 已实现**（分支 `feat/mvp-improved`）：MVP + 8 项改进全部可用，详见 `docs/02-tech-spec.md`。
 
-### v0.1 (MVP) 📝 已设计
-- 📝 上传多个音频文件（aac / mp3 / wav / flac / ogg / opus / m4a…）
-- 📝 选择目标格式 / 编码 / 码率 / 采样率 / 声道
-- 📝 4 个开箱即用的有声书预设（FDK-AAC 48k 暂未启用 + Opus 32/48/64k 三档）
-- 📝 批量编辑元数据（标题 / 艺术家 / 专辑 / 封面）
-- 📝 后台执行转码，单文件进度 + 总进度 SSE 推送
-- 📝 单文件下载 / 批量 zip 下载
+### 本轮实现（MVP + 8 项改进）
+- ✅ 上传多个音频文件（mp3 / m4a / m4b / aac / flac / ogg / opus / wav…），XHR 逐文件上传进度
+- ✅ 6 个预设：Opus 32/48/64k、AAC-LC 64k、HE-AAC v1 48k / v2 32k（libfdk 存在时自动启用）
+- ✅ 单文件转码 + 元数据编辑（未填字段自动继承源文件）
+- ✅ **合并为一个 M4B**：内嵌章节（时间无缝衔接）+ 书名/作者 + 封面（上传或自动提取内嵌）
+- ✅ **loudnorm 响度归一化**开关（目标 -20 LUFS）
+- ✅ **本地目录导入**（白名单根目录，零上传）
+- ✅ SSE 实时进度 + **验证面板**（ffprobe 回读 codec/码率/节省 %）
+- ✅ 单文件 / **zip 批量**下载、失败重试、取消全部、清空已完成
 
-### v0.2 (元数据批处理) 📝 已设计
-- 📝 **模板语法**（8 个字段）—— `第${TrackNum}集 ${TrackTitle} - ${Artist}.m4a`
-- 📝 **AlbumArtist 三种模式** —— 复制 Artist / 用户输入 / 留空
-- 📝 **TrackNum 带总数格式** —— `TRCK = "001/2452"` 让 Apple Books 排序最稳
-- 📝 **反向模板批量重命名** —— 原地修改 + 强制预览 + 自动 .bak 备份
-- 📝 **TrackTitle fallback** —— 缺失时用文件名替代
+### v0.2 (元数据批处理) 📋 归档草案
+- 📋 模板语法 / AlbumArtist 三模式 / 反向重命名 → 规格草案见 `docs/05-v0.2-spec-draft.md`，待实施
 
 ### v0.3 (流媒体播放 + 数据库) 📝 已设计
 - 📝 **Range 请求流** —— 支持 seek、A-B 循环
@@ -116,18 +114,17 @@ docker compose up -d
 
 ## 当前状态
 
-🟡 **设计阶段**——4 份文档已落地（共 3700+ 行），代码尚未开始开发。
+🟢 **v0.2 已实现**（feat/mvp-improved 分支）：FastAPI 后端 + Vanilla JS 前端 + 测试 + Docker。
 
-**已完成**：
-- 📄 `docs/01-design.md` — 设计文档（591 行）
-- 📄 `docs/02-tech-spec.md` — 技术规格（1577 行）
-- 📄 `docs/03-roadmap.md` — 路线图 + 13 个 ADR（688 行）
-- 📄 `docs/04-verification.md` — 验收标准（794 行）
+**文档**：
+- 📄 `docs/02-tech-spec.md` — 技术规格 v2（修正 v1 的 9 处 bug）
+- 📄 `docs/04-verification.md` — 验收标准 v2（含 8 项新功能硬性验收）
+- 📄 `docs/05-v0.2-spec-draft.md` — v0.2 模板批处理规格草案（归档）
 
-**未完成**：
-- ❌ 代码骨架（`src/hac/`）
-- ❌ 单元测试（`tests/`）
-- ❌ 端到端测试
-- ❌ 任何 v0.1/v0.2/v0.3 的可运行代码
+**运行**：
+```bash
+./scripts/setup-ffmpeg.sh   # 可选：下载含 libfdk 的 ffmpeg（启用 HE-AAC 预设）
+uv run uvicorn hac.main:app --port 8000
+```
 
-下一步：审完 4 份文档后按 `docs/03-roadmap.md` §1 优先级起代码骨架。
+下一步：按 `docs/04-verification.md` 在浏览器逐项验收。
