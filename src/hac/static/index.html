@@ -1,1 +1,124 @@
-<!doctype html><title>placeholder</title>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audiobook Converter</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header>
+  <h1>🎧 Audiobook Converter</h1>
+  <div class="header-actions">
+    <span id="health-badge" class="pill" title="加载中…">…</span>
+  </div>
+</header>
+
+<main class="cols">
+  <!-- 1. FILES -->
+  <section class="col" id="col-files">
+    <h2>1 · 文件</h2>
+    <div class="tabs">
+      <button class="tab active" data-tab="upload">上传</button>
+      <button class="tab" data-tab="library">本地目录</button>
+    </div>
+
+    <div id="pane-upload">
+      <div id="dropzone" class="dropzone">
+        <p><b>拖拽音频文件到这里</b><br>或</p>
+        <label class="btn" for="file-input">选择文件</label>
+        <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma">
+        <p class="hint">mp3 / m4a / m4b / aac / flac / ogg / opus / wav</p>
+      </div>
+      <div id="upload-progress"></div>
+      <ul id="file-list" class="filelist"></ul>
+      <div class="file-actions">
+        <button id="btn-clear-files" class="btn subtle">清空列表</button>
+      </div>
+    </div>
+
+    <div id="panel-library" class="tabpane hidden">
+      <div class="lib-bar">
+        <button id="lib-up" class="btn subtle">⬆ 上级</button>
+        <span id="lib-path" class="mono small"></span>
+      </div>
+      <ul id="lib-list" class="filelist"></ul>
+      <p class="hint">白名单根：<span id="lib-roots"></span></p>
+    </div>
+  </section>
+
+  <!-- 2. SETTINGS -->
+  <section class="col" id="col-settings">
+    <h2>2 · 设置</h2>
+    <label class="field">预设
+      <select id="preset"><option value="">— 自定义 —</option></select>
+      <span id="preset-hint" class="hint"></span>
+    </label>
+    <label class="field">格式 <select id="format"></select></label>
+    <label class="field">编码器 <select id="codec"></select></label>
+    <label class="field">码率
+      <select id="bitrate">
+        <option value="">默认</option>
+        <option>16k</option><option>24k</option><option>32k</option>
+        <option>48k</option><option>64k</option><option>96k</option>
+        <option>128k</option><option>192k</option><option>256k</option><option>320k</option>
+      </select>
+    </label>
+    <label class="field">采样率
+      <select id="samplerate">
+        <option value="">自动</option>
+        <option value="24000">24000 Hz</option>
+        <option value="44100">44100 Hz</option>
+        <option value="48000">48000 Hz</option>
+      </select>
+    </label>
+    <label class="field">声道
+      <select id="channels">
+        <option value="">保持</option>
+        <option value="1">1 单声道</option>
+        <option value="2">2 立体声</option>
+      </select>
+    </label>
+    <label class="field checkbox">
+      <input type="checkbox" id="normalize"> 响度归一化 loudnorm（-20 LUFS，解决各章节音量不一致）
+    </label>
+
+    <fieldset id="merge-box" class="hidden">
+      <legend>📚 合并为一个 M4B（有声书）</legend>
+      <label class="field checkbox">
+        <input type="checkbox" id="merge-on">
+        把全部文件按顺序合并为一个 .m4b（AAC-LC 64k 内嵌章节）
+      </label>
+      <div id="merge-fields" class="hidden">
+        <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
+        <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
+        <label class="field">封面 <input type="file" id="merge-cover" accept="image/jpeg,image/png"></label>
+        <p class="hint" id="merge-hint"></p>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>元数据（留空 = 继承源文件）</legend>
+      <label class="field">标题 <input id="meta-title"></label>
+      <label class="field">作者 <input id="meta-artist"></label>
+      <label class="field">专辑 <input id="meta-album"></label>
+    </fieldset>
+
+    <button id="btn-start" class="btn primary">▶ 开始转换</button>
+  </section>
+
+  <!-- 3. JOBS -->
+  <section class="col" id="col-jobs">
+    <h2>3 · 任务</h2>
+    <div class="jobbar">
+      <button id="btn-zip" class="btn">⬇ 全部打包 zip</button>
+      <button id="btn-cancel-all" class="btn subtle">✕ 取消全部</button>
+      <button id="btn-clear-finished" class="btn subtle">🧹 清空已完成</button>
+    </div>
+    <ul id="job-list" class="joblist"></ul>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
