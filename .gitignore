@@ -1,46 +1,9 @@
-# Python
+data/
+vendor/
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-*.egg
-*.egg-info/
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-.tox/
-
-# Virtualenvs
-.venv/
-venv/
-env/
-ENV/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-
-# 项目运行时数据（docs/02-tech-spec.md §6 定义）
-data/
-uploads/
-outputs/
-logs/
-*.log
 *.partial
 *.bak
-
-# 测试产物
-.coverage
-coverage.xml
-.pytest_cache/
-
-# 静态资源（FFmpeg 二进制 ~80MB）
-static-ffmpeg/
-ffmpeg
-ffprobe
+.venv/
+*.egg-info/
