@@ -494,8 +494,8 @@ metadata.write_tags(output_path, job.metadata, inherited=inherited)
 | `doctor` | 打印 python/ffmpeg/编码器/各预设可用性/白名单/数据目录 |
 | `help` | 帮助菜单（命令、选项、环境变量、示例） |
 
-选项：`-p/--port`、`-H/--host`、`-r/--reload`、`-l/--library DIR`（追加白名单根，可重复）。
-环境变量与 §7 相同，外加 `HAC_PORT` / `HAC_HOST` 作为端口与地址的默认值。
+选项：`-p/--port`、`-H/--host`（默认 0.0.0.0，局域网可访问；127.0.0.1 仅本机）、`-r/--reload`、`-l/--library DIR`（追加白名单根，可重复）。
+环境变量与 §7 相同，外加 `HAC_PORT` / `HAC_HOST` 作为端口与地址的默认值（默认 8000 / 0.0.0.0）。
 
 ### 12.2 Docker
 

@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 PORT="${HAC_PORT:-8000}"
-HOST="${HAC_HOST:-127.0.0.1}"
+HOST="${HAC_HOST:-0.0.0.0}"
 RELOAD=""
 LIBRARY_EXTRA=""
 ACTION="start"
@@ -28,13 +28,14 @@ usage() {
 
 选项（用于 start）:
   -p, --port PORT       监听端口        （默认 8000，或环境变量 HAC_PORT）
-  -H, --host HOST       监听地址        （默认 127.0.0.1，或 HAC_HOST；对外服务用 0.0.0.0）
+  -H, --host HOST       监听地址        （默认 0.0.0.0 局域网可访问，或 HAC_HOST；
+                                         仅本机访问用 -H 127.0.0.1）
   -r, --reload          热重载（开发用）
   -l, --library DIR     追加「本地目录导入」白名单根，可重复使用
 
 环境变量:
   HAC_PORT=8000                端口
-  HAC_HOST=127.0.0.1           监听地址
+  HAC_HOST=0.0.0.0             监听地址（127.0.0.1 = 仅本机）
   HAC_LIBRARY_ROOTS=/a:/b      目录导入白名单根（冒号分隔）
   HAC_MAX_CONCURRENT=2         并发转码数
   HAC_MAX_UPLOAD_MB=500        单文件上传上限
@@ -149,8 +150,13 @@ cmd_start() {
     fi
     [ -n "$LIBRARY_EXTRA" ] && export HAC_LIBRARY_ROOTS="${HAC_LIBRARY_ROOTS:+$HAC_LIBRARY_ROOTS:}$LIBRARY_EXTRA"
 
-    URL="http://${HOST}:${PORT}"
-    log "启动 Audiobook Converter → $URL"
+    if [ "$HOST" = "0.0.0.0" ] || [ "$HOST" = "::" ]; then
+        LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        log "本机访问  → http://127.0.0.1:${PORT}"
+        [ -n "${LAN_IP:-}" ] && log "局域网访问 → http://${LAN_IP}:${PORT}"
+    else
+        log "访问地址  → http://${HOST}:${PORT}"
+    fi
     log "停止: ./run.sh stop"
     exec "$PYBIN" -m uvicorn hac.main:app --host "$HOST" --port "$PORT" $RELOAD
 }

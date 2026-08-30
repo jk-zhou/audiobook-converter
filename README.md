@@ -84,9 +84,9 @@
 ### 方式 1：一键脚本（推荐）
 
 ```bash
-./run.sh                                 # 启动 → http://127.0.0.1:8000
+./run.sh                                 # 启动，默认 0.0.0.0，局域网可访问
 ./run.sh help                            # 查看全部命令/选项/环境变量
-./run.sh start -p 9000 -H 0.0.0.0        # 局域网可访问
+./run.sh start -H 127.0.0.1              # 仅本机可访问
 ./run.sh doctor                          # 环境体检
 ./run.sh stop                            # 停止
 ```
@@ -98,7 +98,7 @@ uv venv && uv pip install -e ".[dev]"
 uvicorn hac.main:app --host 0.0.0.0 --port 8000
 ```
 
-### 方式 2：Docker 单容器（推荐）
+### 方式 3：Docker 单容器（NAS/服务器推荐）
 
 ```bash
 docker build -t audiobook-converter .
@@ -133,15 +133,17 @@ docker compose up -d
 
 **运行**（一键脚本，含帮助菜单）：
 ```bash
-./run.sh                # 最简启动 → http://127.0.0.1:8000
+./run.sh                # 最简启动，默认 0.0.0.0 局域网可访问；本机访问 http://127.0.0.1:8000
 ./run.sh help           # 全部命令与选项
 ./run.sh doctor         # 环境体检（依赖/ffmpeg/预设可用性）
 ./run.sh stop           # 停止服务
 ```
 常用示例：
 ```bash
-./run.sh start -p 9000 -H 0.0.0.0 -l /mnt/nas/audiobooks   # 局域网 + NAS 书库
-./run.sh he                            # 源码编译 libfdk，启用 HE-AAC 预设
+./run.sh start -p 9000                    # 指定端口，局域网可访问
+./run.sh start -H 127.0.0.1               # 仅本机可访问
+./run.sh start -l /mnt/nas/audiobooks     # 挂载 NAS 书库目录
+./run.sh he                               # 源码编译 libfdk，启用 HE-AAC 预设
 ```
 > 首次运行会自动创建虚拟环境并安装依赖；ffmpeg 缺失时 `./run.sh setup` 自动下载。
 > 应用启动时自动探测编码器：有 libfdk_aac → 6 预设全开；无 → HE-AAC 两档自动隐藏，其余照常。
