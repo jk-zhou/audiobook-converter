@@ -133,26 +133,56 @@ def _default_output_name(req: JobCreate, paths: list[Path]) -> str:
     return f"{paths[0].stem}{suffix}.{ext}"
 
 
+M4B_CODECS = {"aac", "libfdk_aac"}
+
+
+def validate_merge_settings(settings) -> None:
+    """M4B/MP4 container only supports the AAC family; mirrors UI hints."""
+    codec = settings.codec or DEFAULT_CODEC[settings.format]
+    if codec not in M4B_CODECS:
+        raise HTTPException(
+            400, f"编码器 {codec} 不兼容 M4B：仅支持 AAC 系（aac / libfdk_aac），"
+                 f"Opus/MP3 等请用逐文件模式")
+    if settings.profile and settings.codec != "libfdk_aac":
+        raise HTTPException(400, f"profile {settings.profile} 需搭配 libfdk_aac 编码器")
+    if settings.profile == "aac_he_v2" and settings.channels not in (2, None):
+        raise HTTPException(400, "HE-AAC v2 需要立体声：请把声道设为 2")
+
+
 @app.post("/api/jobs")
 async def create_job(req: JobCreate):
     if not req.source_ids:
         raise HTTPException(400, "source_ids required")
     if req.mode == "merge" and len(req.source_ids) < 2:
         raise HTTPException(400, "merge needs at least 2 sources")
-    if req.mode == "merge" and len(req.source_ids) > config.MAX_MERGE_INPUTS:
-        raise HTTPException(400, f"merge limited to {config.MAX_MERGE_INPUTS} sources")
+    if req.mode == "merge" and len(req.source_ids) > config.MAX_MERGE_FILES:
+        raise HTTPException(
+            400, f"合并文件数 {len(req.source_ids)} 超过上限 {config.MAX_MERGE_FILES}"
+                 f"（可用 --max-merge-files 或 HAC_MAX_MERGE_FILES 调整）")
 
     paths = [_resolve_source(s) for s in req.source_ids]
 
-    settings = req.settings
-    if settings is None and req.preset_id:
+    if req.mode == "merge":
+        total = sum(p.stat().st_size for p in paths)
+        if total > config.MAX_MERGE_BYTES:
+            used = (f"{total / (1 << 30):.2f}GB" if total >= (1 << 30)
+                    else f"{total / (1 << 20):.1f}MB")
+            raise HTTPException(
+                400, f"合并总体积 {used} 超过上限 "
+                     f"{config.MAX_MERGE_GB}GB（可用 --max-merge-gb 或 HAC_MAX_MERGE_GB 调整）")
+
+    # preset provides the base settings; request fields act as explicit overrides
+    settings = None
+    if req.preset_id:
         p = presets.get_preset(req.preset_id)
         if not p:
             raise HTTPException(400, f"unknown preset: {req.preset_id}")
-        enc = encoders.detect_encoders()
-        if not p.effective_enabled(enc):
+        if not p.effective_enabled(encoders.detect_encoders()):
             raise HTTPException(400, f"preset disabled: {p.requires_encoder} missing")
         settings = p.settings
+    if req.settings is not None:
+        overrides = req.settings.model_dump(exclude_none=True)
+        settings = (settings or req.settings).model_copy(update=overrides)
     if settings is None:
         raise HTTPException(400, "settings or preset_id required")
 
@@ -160,6 +190,7 @@ async def create_job(req: JobCreate):
     if merge_opts:
         # merge always produces an M4B regardless of the preset's format
         settings = settings.model_copy(update={"format": "m4b"})
+        validate_merge_settings(settings)
         if not merge_opts.book_title:
             merge_opts = merge_opts.model_copy(update={"book_title": paths[0].stem})
 

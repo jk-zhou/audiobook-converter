@@ -32,6 +32,8 @@ usage() {
                                          仅本机访问用 -H 127.0.0.1）
   -r, --reload          热重载（开发用）
   -l, --library DIR     追加「本地目录导入」白名单根，可重复使用
+  --max-merge-files N   M4B 合并最大文件数   （默认 3000）
+  --max-merge-gb G      M4B 合并最大总体积GB （默认 10）
 
 环境变量:
   HAC_PORT=8000                端口
@@ -39,12 +41,16 @@ usage() {
   HAC_LIBRARY_ROOTS=/a:/b      目录导入白名单根（冒号分隔）
   HAC_MAX_CONCURRENT=2         并发转码数
   HAC_MAX_UPLOAD_MB=500        单文件上传上限
+  HAC_MAX_MERGE_FILES=3000     M4B 合并最大文件数
+  HAC_MAX_MERGE_GB=10          M4B 合并最大总体积（GB）
   HAC_DATA_DIR=./data          数据目录（uploads/work/outputs）
 
 示例:
   ./run.sh                                  # 最简启动 http://127.0.0.1:8000
-  ./run.sh start -p 9000 -H 0.0.0.0         # 局域网可访问
+  ./run.sh start -p 9000                    # 指定端口，局域网可访问
+  ./run.sh start -H 127.0.0.1               # 仅本机访问
   ./run.sh start -l /mnt/nas/audiobooks     # 挂载 NAS 书库目录
+  ./run.sh start --max-merge-files 5000 --max-merge-gb 30   # 放宽合并上限
   ./run.sh doctor                           # 检查环境
   ./run.sh he                               # 启用 HE-AAC（libfdk）
 EOF
@@ -124,6 +130,7 @@ for p in presets.PRESETS:
     mark = "✓" if p.effective_enabled(enc) else "✗"
     print(f"  {mark} {p.id}")
 print(f"目录导入白名单: {[str(r) for r in config.LIBRARY_ROOTS]}")
+print(f"合并上限: {config.MAX_MERGE_FILES} 个文件 / {config.MAX_MERGE_GB}GB")
 print(f"数据目录: {config.DATA_DIR}")
 print("[✓] 环境就绪，可以 ./run.sh start")
 PYEOF
@@ -172,6 +179,8 @@ while [ $# -gt 0 ]; do
         -r|--reload) RELOAD="--reload"; shift ;;
         -l|--library)
             LIBRARY_EXTRA="${LIBRARY_EXTRA:+$LIBRARY_EXTRA:}$2"; shift 2 ;;
+        --max-merge-files) export HAC_MAX_MERGE_FILES="$2"; shift 2 ;;
+        --max-merge-gb)    export HAC_MAX_MERGE_GB="$2"; shift 2 ;;
         *)
             echo "未知参数: $1"; usage; exit 1 ;;
     esac

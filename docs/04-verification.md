@@ -74,6 +74,13 @@ ffprobe -show_format out.m4b | grep -E "title|artist"
 - [ ] 有封面时 ffprobe 显示 mjpeg video stream（attached_pic）；Apple Books 可显示
 - [ ] 输出在 Apple Books /任意播放器章节列表按序显示
 
+### Test F1b：合并采用用户编码参数 + 兼容提示（2026-08-30 新增）
+- [ ] 选 HE-AAC v1 预设 + 勾选合并 → 产物 ffprobe `profile=HE-AAC`（参数被采用，不再强制 LC 64k）
+- [ ] 选 Opus 预设 + 勾选合并 → 编码器字段旁红字提示"M4B 不支持 libopus"，开始按钮禁用；后端 400
+- [ ] 选 AAC 后红字消失；提交成功
+- [ ] 拖拽**文件夹**到上传区 / 用"选择文件夹"按钮 → 递归收集音频文件入列表
+- [ ] 超上限（文件数/体积）→ 400 且消息含如何用 `--max-merge-files` / `--max-merge-gb` 调整
+
 ### Test F2：loudnorm
 - [ ] 勾选"响度归一化"转码 → 用 `ffmpeg -af ebur128 -f null -` 测输出 integrated LUFS
 - [ ] 目标 I=-20 LUFS，实测在 ±2 LU 内；不开 loudnorm 的对照组则无此约束
@@ -123,7 +130,7 @@ ffprobe -show_format out.m4b | grep -E "title|artist"
 - E3 超上限 → 413，磁盘无残留
 - E4 同名两文件 → 不同 upload id，输出不互相覆盖
 - E5 不支持格式（.wma 等）→ 任务 FAILED + 明确错误，不影响其他任务
-- E6 merge 传 1 个文件 → 400；>500 → 400
+- E6 merge 传 1 个文件 → 400；超过文件数上限（默认 3000）→ 400 并提示 `--max-merge-files`；总体积超上限（默认 10GB）→ 400 并提示 `--max-merge-gb`；编码不兼容（如 Opus 选合并）→ 400 且 UI 在编码器字段旁红字提示
 
 ---
 

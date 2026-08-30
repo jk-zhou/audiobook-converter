@@ -8,20 +8,14 @@ from .models import COVER_CAPABLE, COVER_REENCODE, DEFAULT_CODEC, Job, JobStatus
 LOUDNORM = "loudnorm=I=-20:TP=-3:LRA=11"
 
 
-def build_ffmpeg_args(
-    src: Path, dst: Path, s: TranscodeSettings, normalize: bool = False,
-) -> list[str]:
-    codec = s.codec or DEFAULT_CODEC[s.format]
-    args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin",
-            "-i", str(src), "-map", "0:a"]
+def resolve_codec(s: TranscodeSettings) -> str:
+    return s.codec or DEFAULT_CODEC[s.format]
 
-    # cover art passthrough for containers that support attached-pic streams
-    if s.format in COVER_CAPABLE:
-        args += ["-map", "0:v?"]
-        args += ["-c:v", "mjpeg" if s.format in COVER_REENCODE else "copy"]
-        args += ["-disposition:v", "attached_pic"]
 
-    args += ["-c:a", codec]
+def audio_encode_args(s: TranscodeSettings) -> list[str]:
+    """Audio encoding args shared by single-file and merge paths."""
+    codec = resolve_codec(s)
+    args = ["-c:a", codec]
     if s.profile:
         args += ["-profile:a", s.profile]
 
@@ -37,6 +31,22 @@ def build_ffmpeg_args(
         args += ["-ac", str(s.channels)]
     if s.compression_level is not None and codec == "libopus":
         args += ["-compression_level", str(s.compression_level)]
+    return args
+
+
+def build_ffmpeg_args(
+    src: Path, dst: Path, s: TranscodeSettings, normalize: bool = False,
+) -> list[str]:
+    args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin",
+            "-i", str(src), "-map", "0:a"]
+
+    # cover art passthrough for containers that support attached-pic streams
+    if s.format in COVER_CAPABLE:
+        args += ["-map", "0:v?"]
+        args += ["-c:v", "mjpeg" if s.format in COVER_REENCODE else "copy"]
+        args += ["-disposition:v", "attached_pic"]
+
+    args += audio_encode_args(s)
 
     args += ["-map_metadata", "0"]
     if normalize:

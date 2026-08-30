@@ -106,7 +106,7 @@ async function uploadFiles(fileList) {
         if (xhr.status === 200) {
           const { uploads } = JSON.parse(xhr.responseText);
           state.uploads.push(...uploads);
-          renderFiles();
+          scheduleRender();
           bar.style.width = "100%";
           pct.textContent = "✓ 已加入";
         } else {
@@ -123,6 +123,15 @@ async function uploadFiles(fileList) {
 }
 
 /* ============ file list ============ */
+
+let _renderQueued = false;
+function scheduleRender() {
+  // debounced full-list render — folder drops can add thousands of files,
+  // re-rendering per upload would be O(n²)
+  if (_renderQueued) return;
+  _renderQueued = true;
+  setTimeout(() => { _renderQueued = false; renderFiles(); }, 120);
+}
 
 function renderFiles() {
   const ul = $("file-list");
@@ -203,11 +212,13 @@ function totalSources() {
 function updateMergeHint() {
   const n = totalSources();
   const mergeOn = $("merge-on").checked;
+  const errCount = renderMergeHints();
   $("merge-hint").textContent = mergeOn
-    ? `将按顺序合并 ${n} 个文件为一个 .m4b；章节名取各文件标题标签，缺省用文件名` +
+    ? `将按顺序合并 ${n} 个文件为一个 .m4b（采用下方编码设置）；章节名取各文件标题标签，缺省用文件名` +
       (n < 2 ? "（⚠ 至少 2 个文件）" : "")
     : `将为 ${n} 个文件各创建一个转码任务`;
-  $("btn-start").disabled = n === 0 || (mergeOn && n < 2);
+  $("btn-start").disabled =
+    n === 0 || (mergeOn && n < 2) || (mergeOn && errCount > 0);
 }
 
 /* ============ jobs via SSE ============ */
@@ -218,8 +229,7 @@ const STATUS_TXT = {
 };
 const ACTIVE = new Set(["queued", "running", "tagging", "merging"]);
 
-function jobCard(j) {
-  const li = document.createElement("li");
+function jobCardHTML(j) {
   const p = (j.progress || 0).toFixed(1);
   let html =
     `<div class="job-top">` +
@@ -228,7 +238,7 @@ function jobCard(j) {
       `<span class="badge ${j.status}">${STATUS_TXT[j.status] || j.status}</span>` +
     `</div>` +
     `<div class="pbar"><div style="width:${p}%"></div></div>` +
-    `<div class="small" style="color:var(--dim)">${p}%</div>`;
+    `<div class="small pct-text" style="color:var(--dim)">${p}%</div>`;
   if (j.verify) {
     const v = j.verify;
     html += `<div class="verify">✓ <b>${escapeHtml(v.codec)}</b> · <b>${Math.round((v.bitrate || 0) / 1000)}k</b>` +
@@ -244,8 +254,18 @@ function jobCard(j) {
   if (ACTIVE.has(j.status))
     acts.push(`<button class="btn subtle" data-act="cancel" data-id="${j.id}">✕ 取消</button>`);
   html += `<div class="job-actions">${acts.join("")}</div>`;
-  li.innerHTML = html;
-  return li;
+  return `<li data-job="${j.id}">${html}</li>`;
+}
+
+function bindJobActions(scope) {
+  scope.querySelectorAll("[data-act]").forEach((b) => {
+    b.onclick = async () => {
+      const { act, id } = b.dataset;
+      if (act === "dl") location.href = `/api/jobs/${id}/download`;
+      else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
+      else if (act === "cancel") await fetch(`/api/jobs/${id}`, { method: "DELETE" });
+    };
+  });
 }
 
 function renderJobs() {
@@ -257,15 +277,27 @@ function renderJobs() {
     ul.innerHTML = `<li class="empty">暂无任务 — 上传/勾选文件后点「开始转换」</li>`;
     return;
   }
-  for (const j of jobs) ul.appendChild(jobCard(j));
-  ul.querySelectorAll("[data-act]").forEach((b) => {
-    b.onclick = async () => {
-      const { act, id } = b.dataset;
-      if (act === "dl") location.href = `/api/jobs/${id}/download`;
-      else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
-      else if (act === "cancel") await fetch(`/api/jobs/${id}`, { method: "DELETE" });
-    };
-  });
+  for (const j of jobs) {
+    ul.insertAdjacentHTML("beforeend", jobCardHTML(j));
+  }
+  bindJobActions(ul);
+}
+
+/* incremental update: progress tweaks bar width in place (keeps buttons
+   clickable during high-frequency SSE), full card rebuild only on status change */
+function updateJobCard(j, prev) {
+  const li = document.querySelector(`#job-list li[data-job="${j.id}"]`);
+  if (!li) return renderJobs();
+  if (prev.status !== j.status) {
+    li.outerHTML = jobCardHTML(j);
+    bindJobActions($("job-list"));
+    return;
+  }
+  const p = (j.progress || 0).toFixed(1);
+  const bar = li.querySelector(".pbar > div");
+  if (bar) bar.style.width = p + "%";
+  const pct = li.querySelector(".pct-text");
+  if (pct) pct.textContent = p + "%";
 }
 
 function connectSSE() {
@@ -277,8 +309,10 @@ function connectSSE() {
   });
   es.addEventListener("job.update", (e) => {
     const j = JSON.parse(e.data);
+    const prev = state.jobs[j.id];
     state.jobs[j.id] = j;
-    renderJobs();
+    if (prev) updateJobCard(j, prev);
+    else renderJobs();
   });
 }
 
@@ -343,11 +377,42 @@ async function startConversion() {
 }
 
 function currentSettings() {
-  const s = { format: $("format").value, codec: $("codec").value || null };
-  if ($("bitrate").value) s.bitrate = $("bitrate").value;
-  if ($("samplerate").value) s.samplerate = +$("samplerate").value;
-  if ($("channels").value) s.channels = +$("channels").value;
+  // active preset provides the base (carries profile / compression_level that
+  // have no dedicated field), explicit field values act as overrides
+  const p = state.presets.find((x) => x.id === $("preset").value);
+  const s = p ? JSON.parse(JSON.stringify(p.settings))
+              : { format: $("format").value, codec: $("codec").value || null };
+  s.format = $("format").value;
+  s.codec = $("codec").value || null;
+  s.bitrate = $("bitrate").value || null;
+  s.samplerate = $("samplerate").value ? +$("samplerate").value : null;
+  s.channels = $("channels").value ? +$("channels").value : null;
   return s;
+}
+
+/* ---- merge compatibility hints (per-parameter, Apple/m4b rules) ---- */
+
+function mergeCompatErrors() {
+  if (!$("merge-on").checked) return {};
+  const errs = {};
+  const f = $("format").value;
+  const codec = $("codec").value || DEFAULT_CODEC[f];
+  if (!M4B_CODECS.has(codec)) {
+    errs.codec = `M4B 不支持 ${codec}：仅支持 AAC 系（aac / libfdk_aac），Opus/MP3 请用逐文件模式`;
+  }
+  const p = state.presets.find((x) => x.id === $("preset").value);
+  const profile = (p && p.settings.profile) || null;
+  if (profile === "aac_he_v2" && $("channels").value === "1") {
+    errs.channels = "HE-AAC v2 需要立体声：请把声道设为 2（或保持源）";
+  }
+  return errs;
+}
+
+function renderMergeHints() {
+  const errs = mergeCompatErrors();
+  $("err-codec").textContent = errs.codec || "";
+  $("err-channels").textContent = errs.channels || "";
+  return Object.keys(errs).length;
 }
 
 function currentMetadata() {
@@ -372,16 +437,62 @@ function wireHeaderButtons() {
 
 /* ============ wiring & init ============ */
 
+/* ============ folder collection (drag & drop + picker) ============ */
+
+const hasAudioExt = (name) => AUDIO_EXT.has(name.slice(name.lastIndexOf(".")).toLowerCase());
+
+function readEntriesAll(reader) {
+  // readEntries returns at most 100 entries per call — loop until empty batch
+  return new Promise((resolve) => {
+    const all = [];
+    const step = () => reader.readEntries((batch) => {
+      if (!batch.length) return resolve(all);
+      all.push(...batch);
+      step();
+    }, () => resolve(all));
+    step();
+  });
+}
+
+async function collectFilesFromDrop(dt) {
+  const entries = [...(dt.items || [])]
+    .map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry())
+    .filter(Boolean);
+  if (!entries.length) return [...dt.files].filter((f) => hasAudioExt(f.name));
+
+  const out = [];
+  async function walk(entry, depth) {
+    if (depth > 10) return;
+    if (entry.isFile) {
+      const f = await new Promise((res) => entry.file(res, () => res(null)));
+      if (f && hasAudioExt(f.name)) out.push(f);
+    } else if (entry.isDirectory) {
+      for (const child of await readEntriesAll(entry.createReader()))
+        await walk(child, depth + 1);
+    }
+  }
+  for (const en of entries) await walk(en, 0);
+  return out;
+}
+
 function wireDropzone() {
   const dz = $("dropzone");
   dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drag"); });
   dz.addEventListener("dragleave", () => dz.classList.remove("drag"));
-  dz.addEventListener("drop", (e) => {
+  dz.addEventListener("drop", async (e) => {
     e.preventDefault();
     dz.classList.remove("drag");
-    uploadFiles([...e.dataTransfer.files]);
+    const files = await collectFilesFromDrop(e.dataTransfer);
+    if (!files.length) { alert("拖拽内容中没有可识别的音频文件"); return; }
+    uploadFiles(files);
   });
   $("file-input").onchange = (e) => { uploadFiles([...e.target.files]); e.target.value = ""; };
+  $("folder-input").onchange = (e) => {
+    const files = [...e.target.files].filter((f) => hasAudioExt(f.name));
+    if (!files.length) { alert("所选文件夹中没有可识别的音频文件"); return; }
+    uploadFiles(files);
+    e.target.value = "";
+  };
   $("btn-clear-files").onclick = () => {
     state.uploads = [];
     state.coverUploadId = null;
@@ -401,9 +512,12 @@ function wireTabs() {
 }
 
 function wireSettings() {
-  $("preset").onchange = (e) => applyPreset(e.target.value);
+  $("preset").onchange = (e) => { applyPreset(e.target.value); updateMergeHint(); };
   ["format", "codec", "bitrate", "samplerate", "channels"].forEach((id) =>
-    $(id).addEventListener("change", () => { $("preset").value = ""; }));
+    $(id).addEventListener("change", () => {
+      $("preset").value = "";
+      updateMergeHint();   // re-render per-parameter compatibility hints
+    }));
   $("merge-on").onchange = (e) => {
     $("merge-fields").classList.toggle("hidden", !e.target.checked);
     updateMergeHint();
@@ -429,6 +543,14 @@ const CODEC_OPTIONS = [
   ["libvorbis", "libvorbis"], ["flac", "flac"], ["pcm_s16le", "pcm_s16le"],
 ];
 
+const DEFAULT_CODEC = {
+  mp3: "libmp3lame", m4a: "aac", m4b: "aac", opus: "libopus",
+  ogg: "libvorbis", flac: "flac", wav: "pcm_s16le",
+};
+const AUDIO_EXT = new Set([".mp3", ".m4a", ".m4b", ".aac", ".flac", ".ogg",
+                           ".opus", ".wav", ".wma", ".aiff", ".mka"]);
+const M4B_CODECS = new Set(["aac", "libfdk_aac"]);
+
 function populateFormatCodec() {
   for (const [v, label] of FORMAT_OPTIONS) {
     const o = document.createElement("option");
@@ -440,6 +562,7 @@ function populateFormatCodec() {
     o.value = v; o.textContent = label;
     $("codec").appendChild(o);
   }
+  $("format").value = "m4a";   // audiobook-friendly default
 }
 
 function init() {

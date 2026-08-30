@@ -294,9 +294,18 @@ ffmpeg -y -nostdin -i in.flac -vn -map_metadata 0 \
 
 ### 4.3 M4B 合并（merge 模式，merger.py）
 
-**输入**：有序源文件 ≥2、书名/作者、可选封面、AAC-LC 64k 单声道（固定用原生 aac，保证 Apple 兼容）。
+**输入**：有序源文件 ≥2、书名/作者、可选封面、**用户自定义音频编码设置**（见下）。
 
-**Step 1 —— 探测时长**：逐源 ffprobe → `dur[i]`；总时长 = Σ。
+**编码参数**（2026-08-30 修订）：merge 完整采用用户的 `TranscodeSettings`（编码器/profile/码率/VBR/采样率/声道，与单文件共用 `transcoder.audio_encode_args()`），仅强制 `format=m4b`。因 MP4 容器限制，仅接受 AAC 系编码，不兼容参数在后端 400、前端在对应参数旁红字提示：
+
+| 参数 | M4B 约束 | 违例提示位置 |
+|---|---|---|
+| codec | 必须 `aac` 或 `libfdk_aac` | 编码器字段下方红字 + 提交时 400 |
+| profile | 仅 libfdk_aac 支持指定；`aac_he_v2` 需立体声 | 声道字段下方红字 + 400 |
+
+**上限**（可配置）：文件数默认 3000（`HAC_MAX_MERGE_FILES` / `--max-merge-files`）、总体积默认 10GB（`HAC_MAX_MERGE_GB` / `--max-merge-gb`）。超限 400 并提示如何调整。
+
+**Step 1 —— 探测时长**：并发 ffprobe（信号量 16；3000 文件时避免分钟级串行等待）。
 
 **Step 2 —— 生成 ffmetadata**（时间累积，毫秒，TIMEBASE=1/1000）：
 
@@ -337,7 +346,8 @@ ffmpeg -y -nostdin \
   -i cover.jpg \          # N（若有）
   -i chapters.txt \       # N+1，ffmetadata
   -filter_complex "[0:a][1:a]...concat=n=N:v=0:a=1[outa]" \
-  -map "[outa]" -map N:v -c:a aac -b:a 64k -ar 24000 -ac 1 \
+  -map "[outa]" -map N:v \        # 音频参数来自 audio_encode_args(settings)
+  -c:a aac -b:a 64k -ar 24000 -ac 1 \   #（示例 = AAC-LC 预设的值；HE 预设则输出 -profile:a aac_he 等）
   -c:v mjpeg -disposition:v:0 attached_pic \
   -map_metadata N+1 -map_chapters N+1 \
   -movflags +faststart -f mp4 \
@@ -429,6 +439,8 @@ metadata.write_tags(output_path, job.metadata, inherited=inherited)
 | `HAC_DATA_DIR` | `<repo>/data` | uploads/ work/ outputs/ 根 |
 | `HAC_MAX_CONCURRENT` | `2` | 并发 FFmpeg 数 |
 | `HAC_MAX_UPLOAD_MB` | `500` | 单文件上限 |
+| `HAC_MAX_MERGE_FILES` | `3000` | M4B 合并最大文件数（`--max-merge-files`） |
+| `HAC_MAX_MERGE_GB` | `10` | M4B 合并最大总体积 GB（`--max-merge-gb`） |
 | `HAC_LIBRARY_ROOTS` | `<data>/library` | 目录导入白名单根（`:` 分隔多个） |
 | `HAC_FFMPEG_PATH` / `HAC_FFPROBE_PATH` | vendor → which | 二进制覆盖 |
 

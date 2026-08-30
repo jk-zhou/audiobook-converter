@@ -2,10 +2,7 @@ import asyncio
 from pathlib import Path
 
 from . import config, metadata, probe, transcoder
-from .models import Job, JobStatus
-
-BITRATE = "64k"
-SAMPLERATE = 24000
+from .models import Job, JobStatus, TranscodeSettings
 
 
 def _escape_ffmetadata(value: str) -> str:
@@ -58,8 +55,11 @@ def build_merge_args(
     cover: Path | None,
     meta_file: Path,
     dst: Path,
+    settings: TranscodeSettings,
     normalize: bool = False,
 ) -> list[str]:
+    """Merge args adopt the user's audio encoding settings (AAC family only —
+    validated upstream); only the container format is forced to m4b."""
     n = len(sources)
     args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin"]
     for s in sources:
@@ -81,7 +81,7 @@ def build_merge_args(
         args += ["-map", f"{n}:v", "-c:v", "mjpeg",
                  "-disposition:v:0", "attached_pic"]
 
-    args += ["-c:a", "aac", "-b:a", BITRATE, "-ar", str(SAMPLERATE), "-ac", "1"]
+    args += transcoder.audio_encode_args(settings)
     args += ["-map_metadata", str(meta_idx), "-map_chapters", str(meta_idx)]
     args += ["-movflags", "+faststart", "-f", "mp4",
              "-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
@@ -111,14 +111,19 @@ async def execute_merge(job: Job, mgr) -> None:
     mgr.set_status(job.id, JobStatus.MERGING)
     sources = job.source_paths
 
-    durations = []
-    for s in sources:
-        d = probe.probe_duration(s)
-        if d is None:
-            mgr.set_status(job.id, JobStatus.FAILED,
-                           error=f"cannot probe input: {s.name}")
-            return
-        durations.append(d)
+    # concurrent probing (3000 files at ~20ms each would otherwise stall ~1min)
+    sem = asyncio.Semaphore(16)
+
+    async def probe_one(s: Path):
+        async with sem:
+            return await asyncio.to_thread(probe.probe_duration, s)
+
+    durations = await asyncio.gather(*[probe_one(s) for s in sources])
+    bad = [s.name for s, d in zip(sources, durations) if d is None]
+    if bad:
+        mgr.set_status(job.id, JobStatus.FAILED,
+                       error=f"cannot probe input: {', '.join(bad[:3])}")
+        return
     job.total_duration_sec = sum(durations)
 
     work = config.WORK_DIR
@@ -135,7 +140,8 @@ async def execute_merge(job: Job, mgr) -> None:
     cover = _resolve_cover(job, work)
 
     work_dst = work / f"{job.id}.m4b"
-    args = build_merge_args(sources, cover, meta_file, work_dst, normalize=job.normalize)
+    args = build_merge_args(sources, cover, meta_file, work_dst,
+                            job.settings, normalize=job.normalize)
     rc, err_tail = await transcoder.run_ffmpeg(
         args,
         register_proc=lambda p: mgr.register_proc(job.id, p),

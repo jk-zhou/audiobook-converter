@@ -25,10 +25,12 @@
 
     <div id="pane-upload">
       <div id="dropzone" class="dropzone">
-        <p><b>拖拽音频文件到这里</b><br>或</p>
+        <p><b>拖拽音频文件 / 文件夹到这里</b><br>或</p>
         <label class="btn" for="file-input">选择文件</label>
+        <label class="btn" for="folder-input">选择文件夹</label>
         <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma">
-        <p class="hint">mp3 / m4a / m4b / aac / flac / ogg / opus / wav</p>
+        <input type="file" id="folder-input" webkitdirectory multiple class="hidden">
+        <p class="hint">mp3 / m4a / m4b / aac / flac / ogg / opus / wav（文件夹会递归扫描音频）</p>
       </div>
       <div id="upload-progress"></div>
       <ul id="file-list" class="filelist"></ul>
@@ -55,7 +57,8 @@
       <span id="preset-hint" class="hint"></span>
     </label>
     <label class="field">格式 <select id="format"></select></label>
-    <label class="field">编码器 <select id="codec"></select></label>
+    <label class="field">编码器 <select id="codec"></select>
+      <span class="err-hint" id="err-codec"></span></label>
     <label class="field">码率
       <select id="bitrate">
         <option value="">默认</option>
@@ -74,10 +77,11 @@
     </label>
     <label class="field">声道
       <select id="channels">
-        <option value="">保持</option>
+        <option value="">保持源</option>
         <option value="1">1 单声道</option>
         <option value="2">2 立体声</option>
       </select>
+      <span class="err-hint" id="err-channels"></span>
     </label>
     <label class="field checkbox">
       <input type="checkbox" id="normalize"> 响度归一化 loudnorm（-20 LUFS，解决各章节音量不一致）
@@ -87,7 +91,7 @@
       <legend>📚 合并为一个 M4B（有声书）</legend>
       <label class="field checkbox">
         <input type="checkbox" id="merge-on">
-        把全部文件按顺序合并为一个 .m4b（AAC-LC 64k 内嵌章节）
+        把全部文件按顺序合并为一个 .m4b（采用下方编码设置，内嵌章节）
       </label>
       <div id="merge-fields" class="hidden">
         <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
