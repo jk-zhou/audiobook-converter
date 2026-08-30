@@ -7,6 +7,9 @@ def test_reset_and_detect(real_ffmpeg):
     enc = encoders.detect_encoders(real_ffmpeg["ffmpeg"])
     assert "libopus" in enc
     assert "aac" in enc
+    # legend lines ("A..... = Audio") must not leak in as encoder names
+    assert "=" not in enc
+    assert all("=" not in e for e in enc)
 
 
 def test_requires_encoder_filtering():

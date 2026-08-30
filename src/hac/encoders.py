@@ -32,8 +32,13 @@ def detect_encoders(ffmpeg_path=None) -> set[str]:
         if not stripped or stripped.startswith("-") or stripped.startswith("Flags"):
             continue
         parts = stripped.split()
-        # lines look like: " A....D libopus   libopus Opus (codec opus)"
-        if len(parts) >= 2 and parts[0][0] in "AVS":
-            names.add(parts[1])
+        # real encoder lines: " A....D libopus   libopus Opus (codec opus)"
+        # legend lines contain " = " (e.g. "A..... = Audio") — skip them
+        if len(parts) < 2 or parts[0][0] not in "AVS":
+            continue
+        name = parts[1]
+        if name == "=" or not name.replace("_", "").replace("-", "").isalnum():
+            continue
+        names.add(name)
     _cache = names
     return names

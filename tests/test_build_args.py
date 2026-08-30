@@ -63,7 +63,9 @@ def test_extra_args_passthrough():
 
 def test_progress_flags_last():
     a = build_ffmpeg_args("/tmp/i", "/tmp/o", settings("opus", "libopus"))
-    assert a[-4:-2] == ["-progress", "pipe:1"]
+    i = a.index("-progress")
+    assert a[i:i + 3] == ["-progress", "pipe:1", "-stats_period"]
+    assert "pipe:1" in a and a[-2] == "-nostats"
 
 
 def test_cover_maps_for_m4a():

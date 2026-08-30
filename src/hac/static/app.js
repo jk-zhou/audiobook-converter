@@ -77,44 +77,48 @@ function applyPreset(id) {
 
 /* ============ upload with per-file XHR progress ============ */
 
-function uploadFiles(fileList) {
+async function uploadFiles(fileList) {
+  // sequential uploads keep state.uploads order == the user's file order,
+  // which defines the chapter order for M4B merging
   for (const f of fileList) {
-    const row = document.createElement("div");
-    row.className = "uprow";
-    row.innerHTML =
-      `<div class="uprow-top"><span>${escapeHtml(f.name)}</span><span class="pct">0%</span></div>` +
-      `<div class="upbar"><div></div></div>`;
-    $("upload-progress").appendChild(row);
-    const bar = row.querySelector(".upbar > div");
-    const pct = row.querySelector(".pct");
+    await new Promise((resolve) => {
+      const row = document.createElement("div");
+      row.className = "uprow";
+      row.innerHTML =
+        `<div class="uprow-top"><span>${escapeHtml(f.name)}</span><span class="pct">0%</span></div>` +
+        `<div class="upbar"><div></div></div>`;
+      $("upload-progress").appendChild(row);
+      const bar = row.querySelector(".upbar > div");
+      const pct = row.querySelector(".pct");
 
-    const fd = new FormData();
-    fd.append("files", f, f.name);
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const p = Math.round((e.loaded / e.total) * 100);
-        bar.style.width = p + "%";
-        pct.textContent = p + "%";
-      }
-    };
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const { uploads } = JSON.parse(xhr.responseText);
-        state.uploads.push(...uploads);
-        renderFiles();
-        bar.style.width = "100%";
-        pct.textContent = "✓ 已加入";
-      } else {
-        let msg = "HTTP " + xhr.status;
-        try { msg = JSON.parse(xhr.responseText).detail; } catch (e) {}
-        pct.textContent = "✗ " + msg;
-      }
-      setTimeout(() => row.remove(), 6000);
-    };
-    xhr.onerror = () => { pct.textContent = "✗ 网络错误"; };
-    xhr.send(fd);
+      const fd = new FormData();
+      fd.append("files", f, f.name);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const p = Math.round((e.loaded / e.total) * 100);
+          bar.style.width = p + "%";
+          pct.textContent = p + "%";
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const { uploads } = JSON.parse(xhr.responseText);
+          state.uploads.push(...uploads);
+          renderFiles();
+          bar.style.width = "100%";
+          pct.textContent = "✓ 已加入";
+        } else {
+          let msg = "HTTP " + xhr.status;
+          try { msg = JSON.parse(xhr.responseText).detail; } catch (e) {}
+          pct.textContent = "✗ " + msg;
+        }
+        setTimeout(() => { row.remove(); resolve(); }, 400);
+      };
+      xhr.onerror = () => { pct.textContent = "✗ 网络错误"; resolve(); };
+      xhr.send(fd);
+    });
   }
 }
 
@@ -375,9 +379,9 @@ function wireDropzone() {
   dz.addEventListener("drop", (e) => {
     e.preventDefault();
     dz.classList.remove("drag");
-    uploadFiles(e.dataTransfer.files);
+    uploadFiles([...e.dataTransfer.files]);
   });
-  $("file-input").onchange = (e) => { uploadFiles(e.target.files); e.target.value = ""; };
+  $("file-input").onchange = (e) => { uploadFiles([...e.target.files]); e.target.value = ""; };
   $("btn-clear-files").onclick = () => {
     state.uploads = [];
     state.coverUploadId = null;
@@ -415,7 +419,31 @@ function wireLibrary() {
   };
 }
 
+const FORMAT_OPTIONS = [
+  ["opus", "Opus (.opus)"], ["m4a", "AAC/M4A (.m4a)"], ["m4b", "M4B 有声书 (.m4b)"],
+  ["mp3", "MP3 (.mp3)"], ["ogg", "Ogg Vorbis (.ogg)"], ["flac", "FLAC 无损 (.flac)"], ["wav", "WAV (.wav)"],
+];
+const CODEC_OPTIONS = [
+  ["", "自动"], ["libopus", "libopus"], ["aac", "aac（原生）"],
+  ["libfdk_aac", "libfdk_aac（HE-AAC）"], ["libmp3lame", "libmp3lame"],
+  ["libvorbis", "libvorbis"], ["flac", "flac"], ["pcm_s16le", "pcm_s16le"],
+];
+
+function populateFormatCodec() {
+  for (const [v, label] of FORMAT_OPTIONS) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label;
+    $("format").appendChild(o);
+  }
+  for (const [v, label] of CODEC_OPTIONS) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = label;
+    $("codec").appendChild(o);
+  }
+}
+
 function init() {
+  populateFormatCodec();
   loadPresets();
   loadHealth();
   wireDropzone();

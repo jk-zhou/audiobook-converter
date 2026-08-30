@@ -84,7 +84,7 @@ def build_merge_args(
     args += ["-c:a", "aac", "-b:a", BITRATE, "-ar", str(SAMPLERATE), "-ac", "1"]
     args += ["-map_metadata", str(meta_idx), "-map_chapters", str(meta_idx)]
     args += ["-movflags", "+faststart", "-f", "mp4",
-             "-progress", "pipe:1", "-nostats", str(dst)]
+             "-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
     return args
 
 

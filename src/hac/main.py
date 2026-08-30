@@ -157,8 +157,11 @@ async def create_job(req: JobCreate):
         raise HTTPException(400, "settings or preset_id required")
 
     merge_opts = req.merge if req.mode == "merge" else None
-    if merge_opts and not merge_opts.book_title:
-        merge_opts = merge_opts.model_copy(update={"book_title": paths[0].stem})
+    if merge_opts:
+        # merge always produces an M4B regardless of the preset's format
+        settings = settings.model_copy(update={"format": "m4b"})
+        if not merge_opts.book_title:
+            merge_opts = merge_opts.model_copy(update={"book_title": paths[0].stem})
 
     job = Job(
         mode=req.mode,

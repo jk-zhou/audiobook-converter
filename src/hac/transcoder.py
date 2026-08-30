@@ -43,7 +43,7 @@ def build_ffmpeg_args(
         args += ["-af", LOUDNORM]
     if s.extra_args:
         args += list(s.extra_args)
-    args += ["-progress", "pipe:1", "-nostats", str(dst)]
+    args += ["-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
     return args
 
 
