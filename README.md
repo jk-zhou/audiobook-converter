@@ -123,8 +123,10 @@ docker compose up -d
 
 **运行**：
 ```bash
-./scripts/setup-ffmpeg.sh   # 可选：下载含 libfdk 的 ffmpeg（启用 HE-AAC 预设）
+./scripts/setup-ffmpeg.sh      # 可选：下载 BtbN 静态 ffmpeg（注意：已不含 libfdk）
+./scripts/build-he-ffmpeg.sh   # 可选：源码编译含 libfdk 的 ffmpeg（启用 HE-AAC 预设，约 10 分钟）
 uv run uvicorn hac.main:app --port 8000
 ```
+> 应用启动时自动探测编码器：有 libfdk_aac → 6 预设全开；无 → HE-AAC 两档自动隐藏，其余照常。
 
 下一步：按 `docs/04-verification.md` 在浏览器逐项验收。

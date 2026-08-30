@@ -41,8 +41,9 @@ def resolve_binary(name: str, env_key: str) -> Path | None:
     # 3. shutil.which(name)（系统安装兜底）
 ```
 
-- 应用**不强制**任何获取方式；`scripts/setup-ffmpeg.sh` 提供一键获取含 libfdk 的 BtbN 构建（个人使用不涉及再分发许可问题）
-- 任一环节找不到二进制 → 启动失败并给出明确提示
+1.2 之补充（2026-08-30 实测修正）：BtbN 最新静态构建**已不含** libfdk_aac；Ubuntu 的 libfdk-aac2 包**缺 SBR/PS 模块**。
+需要 HE-AAC 时运行 `scripts/build-he-ffmpeg.sh`（源码编译上游 fdk-aac v2.0.2 + ffmpeg 7.1.1，约 10 分钟）。
+应用启动时探测编码器，HE 预设按探测结果自动启用/隐藏——无论哪种 ffmpeg，应用都可用。
 
 ### 1.3 编码器探测（encoders.py）
 
@@ -189,6 +190,7 @@ def effective_enabled(p: Preset, encoders: set[str]) -> bool:
 - **HE-AAC v1 而非 v2 用于单声道**：v2 的 Parametric Stereo 只对立体声有效，v1（SBR）才是单声道下 HE 的正确形态。v2 保留为立体声 32k 档。
 - HE 档不固定 `-ar`（SBR 双率采样由编码器自决，强制 -ar 可能冲突）；AAC-LC 固定 24000（与 Opus 档一致，符合有声书频带需求）
 - AAC-LC 档存在的原因：M4B 合并路线用原生 `aac` 编码器，无任何非自由依赖，任何 ffmpeg 都能跑
+- **libfdk 通道数上报 quirk**（实测 2026-08-30）：libfdk HE 输出经 ffprobe 恒报 `channels=2`（SBR 上采样所致），即使请求 `-ac 1`。预设保持 channels=1 的意图（单声道核），验证面板展示编码器真实上报值。
 
 ---
 

@@ -27,7 +27,10 @@ ffprobe -v quiet -print_format json -show_format -show_streams out.opus \
 ```
 | 档位 | codec | bit_rate | sr | ch |
 |---|---|---|---|---|
-| Opus 32/48/64k | opus | ≈档位±5% | 24000 | 1 |
+| Opus 32/48/64k | opus | 目标±25%（VBR）* | 48000** | 1 |
+
+\* 合成正弦波是 Opus VBR 的病态信号（实测 57.8k @ 48k 目标）；真人声贴住目标。VBR 下码率是目标值不是承诺值。
+\** Ogg/Opus 容器按 RFC 7845 恒报 48000 Hz（24000 只是编码器内部处理率）——UI/文档声称的 24k 指编码率。
 
 ### Test 5：验证面板（新）
 - [ ] 任务完成后卡片显示 codec / 码率 / 采样率 / 声道 / 体积节省 %
@@ -86,6 +89,10 @@ ffprobe -show_format out.m4b | grep -E "title|artist"
 - [ ] `GET /api/health` 的 encoders 数组反映真实 ffmpeg 能力
 - [ ] 本机 ffmpeg 含 libfdk → 预设列表出现 HE-AAC 两档；否则隐藏并说明
 - [ ] HE-AAC v1 输出：`ffprobe` codec_name=aac，且 profile 含 HE（或 SBR 特征），单声道
+
+> ⚠️ **libfdk 获取的实测记录（2026-08-30）**：BtbN 最新静态构建**已不含 libfdk_aac**（下载 122MB 实测）；
+> Ubuntu multiverse 的 `libfdk-aac2 2.0.2-3~ubuntu5` 亦缺少 SBR/PS 模块（HE 编码报 "Unable to set the AOT 5"）。
+> 唯一可靠路径 = 源码编译上游 fdk-aac + ffmpeg，见 `scripts/build-he-ffmpeg.sh`（约 10 分钟）。
 
 ### Test F5：任务管理操作条
 - [ ] cancel-all / clear-finished / retry 各按钮行为正确且 SSE 同步刷新
