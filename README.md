@@ -81,6 +81,39 @@
 
 ---
 
+## 部署方式（v0.1 计划）
+
+### 方式 1：本地 Python（开发用）
+
+```bash
+pip install -e .
+uvicorn hac.main:app --host 0.0.0.0 --port 8000
+```
+
+### 方式 2：Docker 单容器（推荐）
+
+```bash
+docker build -t audiobook-converter .
+docker run -d \
+  --name audiobook-converter \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  audiobook-converter
+
+# 浏览器访问 http://localhost:8000
+```
+
+或用 docker-compose：
+
+```bash
+docker compose up -d
+```
+
+详细设计见 [`docs/03-roadmap.md` §1.5](docs/03-roadmap.md)，
+验收测试见 [`docs/04-verification.md` §14](docs/04-verification.md)。
+
+---
+
 ## 当前状态
 
 🟡 **设计阶段**——4 份文档已落地（共 3700+ 行），代码尚未开始开发。

@@ -792,3 +792,171 @@ class TestResolveConflict:
 6. **验证导入速度**：
    - 对比"导入未处理的 2452 个文件"和"导入处理后的 2452 个文件"的耗时
    - 期望：处理后导入至少快 30%（因为 Books 无需重新解析元数据）
+
+---
+
+## 14. v0.1 Docker 部署验收
+
+### Test D1：Dockerfile 构建成功
+
+**操作**：
+```bash
+cd /home/clawbot/workspace/audiobook-converter
+docker build -t audiobook-converter:test .
+```
+
+**期望**：
+- 构建无报错退出码 0
+- 镜像大小 ~300-450MB
+- 最终镜像存在：`docker images | grep audiobook-converter`
+
+**验证**：
+```bash
+docker run --rm audiobook-converter:test ffmpeg -version
+# 期望: ffmpeg version ... 输出 + 含 libopus 但不含 libfdk_aac
+```
+
+### Test D2：容器启动 + 健康检查
+
+**操作**：
+```bash
+mkdir -p ./test-data
+docker run -d \
+  --name hac-test \
+  -p 18000:8000 \
+  -v $(pwd)/test-data:/app/data \
+  audiobook-converter:test
+
+sleep 5  # 等待启动
+
+docker ps --filter name=hac-test --format "{{.Status}}"
+# 期望: Up X seconds (healthy)
+
+curl -f http://localhost:18000/api/health
+# 期望: {"status": "ok"}
+```
+
+### Test D3：volume 挂载生效
+
+**操作**：通过容器内转码一个文件，验证主机可见
+
+```bash
+# 上传文件到容器
+curl -X POST -F "file=@./test.flac" \
+  http://localhost:18000/api/upload
+
+# 触发转码
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"preset_id": "audiobook_opus_mid_48k"}' \
+  http://localhost:18000/api/jobs
+
+# 等待完成
+sleep 10
+
+# 验证主机目录有文件
+ls -la ./test-data/outputs/
+# 期望: 看到 .opus 文件
+
+ls -la ./test-data/uploads/
+# 期望: 看到上传的原文件
+```
+
+### Test D4：docker-compose 启动
+
+**操作**：
+```bash
+# 修改 docker-compose.yml 端口避免冲突（或测试用环境变量覆盖）
+docker compose up -d
+
+sleep 5
+
+curl -f http://localhost:8000/api/health
+# 期望: {"status": "ok"}
+
+docker compose down
+# 期望: 容器停止，数据保留在 ./data/
+```
+
+### Test D5：镜像体积合理
+
+**操作**：
+```bash
+docker images audiobook-converter:test --format "{{.Size}}"
+```
+
+**期望**：
+- 体积 < 500MB
+- 体积 > 200MB（确保不是 alpine 太小丢功能）
+
+### Test D6：非 root 用户运行
+
+**操作**：
+```bash
+docker exec hac-test whoami
+# 期望: app
+```
+
+### Test D7：构建上下文（.dockerignore 生效）
+
+**操作**：
+```bash
+# 检查 .dockerignore 排除项生效
+docker build -t test-context --progress=plain . 2>&1 | grep "transferring context"
+# 期望: 不应包含 .git/、data/、tests/ 等
+```
+
+### Test D8：容器重启数据保留
+
+**操作**：
+```bash
+# 转码一个文件
+docker exec hac-test ls /app/data/outputs/
+
+# 重启容器
+docker restart hac-test
+
+# 再检查
+docker exec hac-test ls /app/data/outputs/
+# 期望: 文件仍在
+```
+
+### Test D9：FDK-AAC 不可用（确认 disabled 仍生效）
+
+**操作**：
+```bash
+docker exec hac-test ffmpeg -hide_banner -encoders | grep -i fdk
+# 期望: 无输出（apt 装的 ffmpeg 无 libfdk_aac）
+
+docker exec hac-test python -c "
+from hac.presets import get_preset
+p = get_preset('audiobook_aac_he_v2_48k')
+assert p['enabled'] == False, 'AAC HE-AAC v2 应该被禁用'
+print('✓ preset 正确禁用')
+"
+```
+
+### Test D10：HEALTHCHECK 实际工作
+
+**操作**：
+```bash
+# 启动后立即观察健康检查
+docker run -d --name hac-health -p 18001:8000 audiobook-converter:test
+docker inspect hac-health --format="{{.State.Health.Status}}"
+# 期望: starting → healthy (10 秒内)
+
+# 模拟故障（kill uvicorn）
+docker exec hac-health pkill -f uvicorn
+sleep 35  # 等待下次健康检查
+docker inspect hac-health --format="{{.State.Health.Status}}"
+# 期望: unhealthy
+
+docker rm -f hac-health
+```
+
+**清理**：
+```bash
+docker rm -f hac-test
+rm -rf ./test-data
+```
+
+---

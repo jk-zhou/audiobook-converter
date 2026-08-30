@@ -80,6 +80,26 @@
 
 **结论**：内存级任务表 + semaphore 限并发。简单到能在一个文件里写完，复杂需求时再换 Celery。**服务重启后任务丢失**——MVP 接受这个限制。
 
+### 2.5 部署形态：本地 + Docker 双形态（v0.1）
+
+| 形态 | 适合场景 | 启动命令 |
+|---|---|---|
+| **本地 Python** ✅ | 开发机调试 | `uvicorn hac.main:app --host 0.0.0.0 --port 8000` |
+| **Docker 单容器** ✅ | NAS、远程服务器、生产 | `docker run -p 8000:8000 -v ./data:/app/data audiobook-converter` |
+| Docker Compose | 多容器编排（v0.3 数据库引入后才有意义） | `docker compose up -d` |
+
+**Docker 设计要点**（详见 `docs/03-roadmap.md` §1.5）：
+- 基础镜像：`python:3.11-slim` + apt 装 ffmpeg（无 libfdk_aac）
+- 数据持久化：必挂 volume `./data:/app/data`
+- 健康检查：`/api/health` 端点 + curl
+- 非 root 用户：容器内 uid=1000
+- 镜像体积：~375MB
+
+**为什么同时支持两种形态**：
+- 本地 Python：开发者日常调试，修改代码即生效
+- Docker：NAS/服务器部署，一行命令拉起，无需手动装依赖
+- 两者共存互不影响，**不强制** Docker
+
 ---
 
 ## 3. 架构设计

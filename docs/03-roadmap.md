@@ -36,6 +36,7 @@
 - 📝 单文件下载
 - 📝 前端三栏布局 + 预设下拉
 - 📝 Opus 三档预设（32k/48k/64k）全部 enabled
+- 📝 **Docker 容器化部署**（单镜像 + 可选 docker-compose，详见 §1.5）
 
 ### 1.2 不做（明确边界）
 
@@ -68,6 +69,15 @@
 
 按 Karpathy 准则 #2（简洁优先），实际可能更短。
 
+**Docker 部署（v0.1 补丁，详见 §1.5）**：
+
+| 文件 | 估算行数 |
+|---|---|
+| `Dockerfile` | 30 |
+| `docker-compose.yml` | 15 |
+| `.dockerignore` | 20 |
+| **总计** | **~65 行** |
+
 ### 1.4 验收（详见 04-verification.md）
 
 1. 上传 50MB FLAC → 看到上传进度
@@ -76,6 +86,152 @@
 4. 元数据（title/artist）正确嵌入（`mutagen-inspect` 验证）
 5. 点击下载浏览器收到正确的 `.opus` 文件
 6. 取消任务后输出文件无法下载（标记 .partial）
+
+### 1.5 Docker 部署（v0.1 新增）
+
+**目标**：一行命令拉起容器，本地/局域网/远程都能跑。
+
+**设计决策**：
+
+| # | 决策 | 选择 | 理由 |
+|---|---|---|---|
+| 1 | 容器拓扑 | **单容器**（可选 docker-compose 附加）| 本地工具，不需要多服务 |
+| 2 | 基础镜像 | **`python:3.11-slim`** + apt 装 ffmpeg | 官方镜像稳定，体积可接受 |
+| 3 | libfdk_aac | **不启用**（apt 默认 ffmpeg 不含）| 与 v0.1 preset 设计一致 |
+| 4 | 数据持久化 | **必挂 volume** `./data:/app/data` | 容器重启即丢数据，必须挂载 |
+| 5 | 端口 | **8000** | 与本地开发一致 |
+| 6 | 用户权限 | **非 root 用户 `app`** | 安全最佳实践 |
+| 7 | 健康检查 | **`/api/health` + curl** | 容器编排友好 |
+| 8 | `.dockerignore` | **要写**（与 `.gitignore` 类似但更严）| 减小构建上下文 |
+| 9 | GitHub Actions 自动构建 | **不做**（本地工具，无需 CI） | 简化维护 |
+
+**镜像规格（估算）**：
+
+```
+基础镜像: python:3.11-slim  → ~120MB
++ ffmpeg (apt)              → ~200MB
++ Python deps (fastapi 等)   → ~50MB
++ 应用代码                   → <5MB
+─────────────────────────────
+总计:                        ~375MB
+```
+
+**部署命令（用户视角）**：
+
+```bash
+# 1. 拉取/构建镜像
+docker build -t audiobook-converter .
+
+# 2. 运行容器（一条命令）
+docker run -d \
+  --name audiobook-converter \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  audiobook-converter
+
+# 3. 浏览器访问
+open http://localhost:8000
+```
+
+或用 docker-compose：
+
+```bash
+docker compose up -d
+```
+
+**Dockerfile 关键点（设计稿，v0.1 代码阶段实现）**：
+
+```dockerfile
+FROM python:3.11-slim
+
+# 系统依赖：ffmpeg + 健康检查用 curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 非 root 用户
+RUN useradd -m -u 1000 app
+WORKDIR /app
+USER app
+
+# Python 依赖
+COPY --chown=app:app pyproject.toml ./
+RUN pip install --no-cache-dir -e .
+
+# 应用代码
+COPY --chown=app:app src/ ./src/
+COPY --chown=app:app static/ ./static/
+
+# 数据目录（volume 挂载点）
+RUN mkdir -p /app/data/uploads /app/data/outputs
+
+# 环境变量
+ENV HAC_DATA_DIR=/app/data \
+    HAC_MAX_CONCURRENT=4
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# 入口点
+EXPOSE 8000
+ENTRYPOINT ["uvicorn", "hac.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**docker-compose.yml 草案**：
+
+```yaml
+services:
+  web:
+    build: .
+    container_name: audiobook-converter
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - HAC_DATA_DIR=/app/data
+      - HAC_MAX_CONCURRENT=4
+```
+
+**.dockerignore 草案**：
+
+```
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/
+uploads/
+outputs/
+logs/
+*.log
+*.partial
+*.bak
+tests/
+docs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.vscode/
+.idea/
+.DS_Store
+README.md
+*.md
+!docs/  # 注意：如需复制文档进镜像，单独添加
+```
+
+**已知限制**：
+
+| 限制 | 影响 | 缓解 |
+|---|---|---|
+| apt 装的 ffmpeg 无 libfdk_aac | HE-AAC v2 preset 无法启用 | 已在 `enabled=False` |
+| 容器内时间默认 UTC | 转码日志时间戳与本地不同 | 容器启动时 `TZ` 环境变量 |
+| 文件权限问题（容器内 uid=1000） | volume 挂载的目录权限不匹配 | 启动前 `chown -R 1000:1000 ./data` |
 
 ---
 
@@ -683,6 +839,18 @@ def undo_rename(backup_id: str) -> bool:
 - 用户手动 `rm` 删除的文件自动从数据库消失
 
 **反悔条件**：磁盘 IO 太大 → 加 `--no-scan` 启动参数跳过
+
+### ADR-014：v0.1 阶段就支持 Docker 单镜像部署（v0.1 补丁）
+
+**决定**：v0.1 完成时同时交付 Dockerfile + docker-compose.yml + .dockerignore，用户可一行命令跑容器。
+
+**理由**：
+- 部署形态多样化：开发机用 Python、NAS/服务器用 Docker
+- 工具定位是"本地工具"，但不少用户用 NAS 或远程服务器
+- 一行 `docker run` 比"安装 Python + 装 ffmpeg + 拉依赖"对用户友好得多
+- 官方 Python 镜像 + apt 装 ffmpeg 简单可靠，无需多阶段构建
+
+**反悔条件**：用户反馈"需要更复杂的部署（K8s/Swarm）" → 升级为 Helm Chart 或 Compose 多服务
 
 ---
 
