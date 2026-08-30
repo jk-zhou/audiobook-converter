@@ -4,7 +4,9 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg curl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# BtbN static ffmpeg (includes libfdk_aac + ffprobe) -> enables HE-AAC presets.
+# BtbN static ffmpeg (ffmpeg + ffprobe; NOTE: no longer ships libfdk_aac).
+# HE-AAC presets stay auto-hidden in the default image — mount a locally built
+# binary (scripts/build-he-ffmpeg.sh) or build it inside the image if needed.
 # Falls back to the apt ffmpeg above if the download fails at build time.
 ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz
 RUN set -e; \

@@ -79,12 +79,22 @@
 
 ---
 
-## 部署方式（v0.1 计划）
+## 部署方式
 
-### 方式 1：本地 Python（开发用）
+### 方式 1：一键脚本（推荐）
 
 ```bash
-pip install -e .
+./run.sh                                 # 启动 → http://127.0.0.1:8000
+./run.sh help                            # 查看全部命令/选项/环境变量
+./run.sh start -p 9000 -H 0.0.0.0        # 局域网可访问
+./run.sh doctor                          # 环境体检
+./run.sh stop                            # 停止
+```
+
+### 方式 2：手动 Python（开发调试用）
+
+```bash
+uv venv && uv pip install -e ".[dev]"
 uvicorn hac.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -121,12 +131,19 @@ docker compose up -d
 - 📄 `docs/04-verification.md` — 验收标准 v2（含 8 项新功能硬性验收）
 - 📄 `docs/05-v0.2-spec-draft.md` — v0.2 模板批处理规格草案（归档）
 
-**运行**：
+**运行**（一键脚本，含帮助菜单）：
 ```bash
-./scripts/setup-ffmpeg.sh      # 可选：下载 BtbN 静态 ffmpeg（注意：已不含 libfdk）
-./scripts/build-he-ffmpeg.sh   # 可选：源码编译含 libfdk 的 ffmpeg（启用 HE-AAC 预设，约 10 分钟）
-uv run uvicorn hac.main:app --port 8000
+./run.sh                # 最简启动 → http://127.0.0.1:8000
+./run.sh help           # 全部命令与选项
+./run.sh doctor         # 环境体检（依赖/ffmpeg/预设可用性）
+./run.sh stop           # 停止服务
 ```
+常用示例：
+```bash
+./run.sh start -p 9000 -H 0.0.0.0 -l /mnt/nas/audiobooks   # 局域网 + NAS 书库
+./run.sh he                            # 源码编译 libfdk，启用 HE-AAC 预设
+```
+> 首次运行会自动创建虚拟环境并安装依赖；ffmpeg 缺失时 `./run.sh setup` 自动下载。
 > 应用启动时自动探测编码器：有 libfdk_aac → 6 预设全开；无 → HE-AAC 两档自动隐藏，其余照常。
 
 下一步：按 `docs/04-verification.md` 在浏览器逐项验收。

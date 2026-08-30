@@ -140,7 +140,7 @@ ffprobe -show_format out.m4b | grep -E "title|artist"
 - D3 volume 挂载：容器内转码 → 宿主 `./data/outputs/` 可见
 - D4 compose up/down 正常
 - D5 非 root：`docker exec ... whoami` = app
-- **D6（修订，翻转 v1 的 D9）**：`docker exec ... ffmpeg -encoders | grep libfdk_aac` **应有输出**（BtbN 二进制内置）；`/api/presets` 含 HE-AAC 档
+- **D6（2026-08-30 实测修订）**：默认镜像**不含 libfdk_aac**（BtbN 已移除）→ `/api/presets` 中 HE-AAC 两档自动隐藏，其余 4 档可用；挂载本地编译二进制（`scripts/build-he-ffmpeg.sh` 产物）后 6 档全开
 - D7 容器重启后 /app/data 文件保留
 
 ---

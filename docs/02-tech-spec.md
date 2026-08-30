@@ -479,9 +479,28 @@ metadata.write_tags(output_path, job.metadata, inherited=inherited)
 
 ---
 
-## 12. Docker
+## 12. 部署与运行
 
-- `python:3.11-slim` + `curl`；构建时下载 BtbN ffmpeg（含 libfdk_aac + ffprobe）到 `/usr/local/bin`，下载失败则 apt ffmpeg 兜底
+### 12.1 一键脚本（本地运行入口）
+
+`run.sh`（项目根目录）是用户的唯一入口命令，封装了 venv 创建、依赖安装、二进制探测与进程管理：
+
+| 命令 | 行为 |
+|---|---|
+| `./run.sh` / `start` | 确保依赖 → 解析 ffmpeg（vendor → 系统）→ `exec uvicorn hac.main:app` |
+| `stop` | `pgrep -f "uvicorn hac.main:app"` 并 SIGTERM |
+| `setup` | uv/venv 安装依赖；缺 ffmpeg 时调 `scripts/setup-ffmpeg.sh` |
+| `he` | 调 `scripts/build-he-ffmpeg.sh`（源码编译 libfdk，启用 HE-AAC 预设） |
+| `doctor` | 打印 python/ffmpeg/编码器/各预设可用性/白名单/数据目录 |
+| `help` | 帮助菜单（命令、选项、环境变量、示例） |
+
+选项：`-p/--port`、`-H/--host`、`-r/--reload`、`-l/--library DIR`（追加白名单根，可重复）。
+环境变量与 §7 相同，外加 `HAC_PORT` / `HAC_HOST` 作为端口与地址的默认值。
+
+### 12.2 Docker
+
+- `python:3.11-slim` + `curl`；构建时下载 BtbN ffmpeg（ffmpeg+ffprobe 齐全，但**不含 libfdk_aac**，实测 2026-08-30），下载失败则 apt ffmpeg 兜底
+- 默认镜像 HE-AAC 预设自动隐藏（编码器探测兜底，应用功能不受影响）；需要 HE 时可用 `docker run -v ./vendor/bin:/app/vendor/bin:ro` 挂载本地编译好的二进制，或在镜像内跑 `scripts/build-he-ffmpeg.sh`
 - 非 root uid=1000；volume `/app/data`；HEALTHCHECK `/api/health`
 - `HAC_LIBRARY_ROOTS` 可挂载额外书库目录（只读挂载建议）
 
