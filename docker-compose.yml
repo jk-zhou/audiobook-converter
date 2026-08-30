@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    container_name: audiobook-converter
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      # optional: mount a host books dir for server-side import (read-only)
+      # - /mnt/nas/audiobooks:/books:ro
+    environment:
+      - HAC_DATA_DIR=/app/data
+      - HAC_MAX_CONCURRENT=2
+      # whitelist roots for the library browser (colon-separated)
+      # - HAC_LIBRARY_ROOTS=/books:/app/data/library
+    restart: unless-stopped
