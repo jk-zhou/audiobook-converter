@@ -305,6 +305,12 @@ ffmpeg -y -nostdin -i in.flac -vn -map_metadata 0 \
 
 **上限**（可配置）：文件数默认 3000（`HAC_MAX_MERGE_FILES` / `--max-merge-files`）、总体积默认 10GB（`HAC_MAX_MERGE_GB` / `--max-merge-gb`）。超限 400 并提示如何调整。
 
+**大规模合并 = 分块两阶段**（2026-08-30 新增，修复用户 2000+ 文件合并把整台服务拖垮的崩溃）：
+- ≤ `HAC_MERGE_CHUNK`（默认 500）个输入：单遍 filter_complex concat（章节时间精确）
+- 超过则两阶段：phase1 按 500 一块编码到目标设置（每块独立 ffmpeg，峰值内存 ≤ ~1.5GB）；phase2 用 concat demuxer **流复制**拼合 + ffmetadata 章节 + 封面（零二次编码损失）
+- 章节时间：块边界用**实测**块时长对齐，块内累积源时长（精度与单遍一致，实测 258 文件无缝）
+- 收益：内存有界（原单遍 2000 输入 ~6GB RSS 会触发系统 OOM 连坐整个应用）、fd 需求 ≤500、配合启动时 fd 软限提升彻底解决 "Too many open files"
+
 **Step 1 —— 探测时长**：并发 ffprobe（信号量 16；3000 文件时避免分钟级串行等待）。
 
 **Step 2 —— 生成 ffmetadata**（时间累积，毫秒，TIMEBASE=1/1000）：
@@ -429,6 +435,25 @@ metadata.write_tags(output_path, job.metadata, inherited=inherited)
  "encoders": ["libopus", "aac", "libfdk_aac"],
  "presets_enabled": 5, "presets_disabled": 1}
 ```
+
+### 6.6 会话保持（2026-08-30 新增）
+
+- `GET /api/uploads` 返回当前上传注册表 → 页面重开时恢复文件列表
+- 设置/排序/列配置/目录勾选存 `localStorage`（`hac.session.v1`），刷新即恢复
+- 任务列表随服务进程存活（SSE job.list 恢复）；服务重启仍清空（v0.3 SQLite 范围）
+
+### 6.7 任务完成自动清理上传文件（2026-08-30 新增）
+
+任务 DONE 后自动删除其消费的上传源文件（`data/uploads/`）及 merge 封面临时文件：
+
+- **本地目录文件（`lib:*`）永不删除**；被其他任务引用的文件跳过
+- 清理后广播 `uploads.changed`，前端同步移除列表项
+- 失败/取消的任务不清理（可重试）；outputs/ 产物不受影响
+
+### 6.8 滚动日志（2026-08-30 新增）
+
+`data/logs/app.log`：TimedRotatingFileHandler 按天轮转，`backupCount=30` 自动清理；
+uvicorn/uvicorn.error/uvicorn.access/hac 全部接入；访问日志仅记录 4xx/5xx。
 
 ---
 

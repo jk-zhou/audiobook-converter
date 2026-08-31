@@ -24,6 +24,38 @@ def all_uploads() -> list[Upload]:
     return list(_store.values())
 
 
+def remove(upload_id: str, delete_file: bool = True) -> bool:
+    u = _store.pop(upload_id, None)
+    if not u:
+        return False
+    if delete_file:
+        u.path.unlink(missing_ok=True)
+    return True
+
+
+def cleanup_for_job(job, all_jobs: dict) -> list[str]:
+    """Delete source uploads after a job finished, unless another job still
+    references them. Library files (lib:*) are never touched."""
+    cleaned = []
+    for sid in job.source_ids:
+        if sid.startswith("lib:") or not _store.get(sid):
+            continue
+        referenced_elsewhere = any(
+            sid in j.source_ids for jid, j in all_jobs.items()
+            if jid != job.id and j is not job)
+        if referenced_elsewhere:
+            continue
+        if remove(sid):
+            cleaned.append(sid)
+    # merge cover uploads are transient too
+    if job.mode == "merge" and job.merge and job.merge.cover_upload_id:
+        cover_id = job.merge.cover_upload_id
+        if cover_id in _store and not any(
+                cover_id in j.source_ids for jid, j in all_jobs.items() if jid != job.id):
+            remove(cover_id)
+    return cleaned
+
+
 async def save_stream(f: UploadFile) -> Upload:
     """Chunked streaming save with size cap (fixes v1 full-in-memory bug)."""
     if config.FFMPEG_PATH is None:

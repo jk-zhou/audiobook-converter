@@ -67,3 +67,56 @@ def test_validate_rejects_he_v2_mono():
         validate_merge_settings(TranscodeSettings(
             format="m4b", codec="libfdk_aac", profile="aac_he_v2", channels=1))
     assert "立体声" in e.value.detail
+
+
+def test_chunked_chapter_timing():
+    """Part boundaries use actual part durations; in-part offsets accumulate."""
+    from hac.merger import build_chapter_meta_chunked
+    meta = build_chapter_meta_chunked(
+        part_durations=[10.5, 4.0],          # actual encoded part lengths
+        chunk_sizes=[2, 1],
+        source_durations=[5.0, 5.0, 4.0],    # sources (slightly shorter than encoded)
+        titles=["一", "二", "三"],
+        book_title="书", composer="演",
+    )
+    assert "composer=演" in meta
+    assert "START=0\nEND=5000" in meta or "START=0\nEND=5000" in meta.replace("\r", "")
+    # ch2 starts at 5000 (within part 1), part 2 starts at ACTUAL 10500
+    assert "START=5000" in meta
+    assert "END=10000" in meta
+    assert "START=10500" in meta
+    assert "END=14500" in meta
+
+
+def test_concat_list_escapes_quotes(tmp_path):
+    from hac.merger import build_concat_list
+    p1 = tmp_path / "it's.m4a"; p1.write_bytes(b"x")
+    lf = tmp_path / "l.txt"
+    build_concat_list([p1], lf)
+    content = lf.read_text()
+    assert content.startswith("file '")
+    assert "\\'" in content   # quote escaped
+
+
+def test_cleanup_for_job(tmp_path, monkeypatch):
+    from hac import uploads as up
+    from hac.models import Job, TranscodeSettings
+
+    monkeypatch.setattr(up, "_store", {})
+    f1 = tmp_path / "a.mp3"; f1.write_bytes(b"x")
+    f2 = tmp_path / "b.mp3"; f2.write_bytes(b"x")
+    for p, fid in ((f1, "u1"), (f2, "u2")):
+        up._store[fid] = up.Upload(id=fid, name=p.name, path=p, size=1)
+
+    j = Job(mode="single", source_ids=["u1"], output_filename="x",
+            settings=TranscodeSettings(format="mp3"))
+    cleaned = up.cleanup_for_job(j, {"j1": j})
+    assert cleaned == ["u1"]
+    assert not f1.exists() and f2.exists()
+
+    # lib files and files referenced by other jobs survive
+    lib_job = Job(mode="merge", source_ids=["lib:/x", "u2"], output_filename="m",
+                  settings=TranscodeSettings(format="m4b"))
+    cleaned2 = up.cleanup_for_job(lib_job, {"other": lib_job})
+    assert cleaned2 == ["u2"]          # "lib:/x" untouched, u2 consumed
+    assert not f2.exists()

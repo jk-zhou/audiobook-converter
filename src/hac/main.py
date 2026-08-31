@@ -4,6 +4,7 @@ import os
 import tempfile
 import zipfile
 from contextlib import asynccontextmanager
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -29,6 +30,18 @@ class _SuccessOnlyFilter(logging.Filter):
             return True
 
 
+def setup_logging() -> None:
+    """Daily-rotating file log under data/logs, 30 days retention."""
+    log_dir = config.DATA_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    handler = TimedRotatingFileHandler(
+        log_dir / "app.log", when="midnight", backupCount=30, encoding="utf-8")
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "hac"):
+        logging.getLogger(name).addHandler(handler)
+
+
 logging.getLogger("uvicorn.access").addFilter(_SuccessOnlyFilter())
 
 jm = JobManager(max_concurrent=config.MAX_CONCURRENT_JOBS)
@@ -41,6 +54,7 @@ async def lifespan(app: FastAPI):
     # Done in-process because uvloop ignores preexec_fn in subprocess spawns.
     _raise_nofile()
     config.ensure_dirs()
+    setup_logging()
     encoders.reset_cache()
     jm.start_workers()
     yield
@@ -73,6 +87,13 @@ async def upload(files: list[UploadFile] = File(...)):
 async def upload_cover(cover: UploadFile = File(...)):
     u = uploads.save_cover(cover)
     return {"id": u.id, "name": u.name}
+
+
+@app.get("/api/uploads")
+async def list_uploads():
+    """Current upload registry — lets a reopened page resume the session."""
+    return [{"id": u.id, "name": u.name, "size": u.size, "info": u.info}
+            for u in uploads.all_uploads()]
 
 
 @app.get("/api/probe/{upload_id}")
@@ -108,7 +129,7 @@ class LibraryProbeRequest(BaseModel):
 
 @app.post("/api/library/probe")
 async def library_probe(req: LibraryProbeRequest):
-    """Batch-probe library files (title/track) for client-side metadata sorting."""
+    """Batch-probe library files for metadata columns / sorting."""
     out = {}
     for path in req.paths[: config.MAX_MERGE_FILES]:
         p = Path(path)
@@ -117,9 +138,17 @@ async def library_probe(req: LibraryProbeRequest):
         try:
             info = probe.probe(p)
             tags = info.get("tags") or {}
-            out[str(p)] = {"title": tags.get("title"), "track": tags.get("track")}
+            out[str(p)] = {
+                "title": tags.get("title"),
+                "track": tags.get("track"),
+                "album": tags.get("album"),
+                "artist": tags.get("artist"),
+                "composer": tags.get("composer"),
+                "duration": info.get("duration"),
+            }
         except probe.ProbeError:
-            out[str(p)] = {"title": None, "track": None}
+            out[str(p)] = {"title": None, "track": None, "album": None,
+                           "artist": None, "composer": None, "duration": None}
     return out
 
 
