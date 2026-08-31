@@ -31,40 +31,15 @@ def display_stem(source_id: str) -> str | None:
     return None
 
 
+def referenced_by_active(source_id: str, jobs: dict) -> bool:
+    """True if any QUEUED/RUNNING/TAGGING/MERGING job still consumes this id."""
+    from .models import ACTIVE_STATUSES
+    return any(source_id in j.source_ids
+               for j in jobs.values() if j.status in ACTIVE_STATUSES)
+
+
 def all_uploads() -> list[Upload]:
     return list(_store.values())
-
-
-def remove(upload_id: str, delete_file: bool = True) -> bool:
-    u = _store.pop(upload_id, None)
-    if not u:
-        return False
-    if delete_file:
-        u.path.unlink(missing_ok=True)
-    return True
-
-
-def cleanup_for_job(job, all_jobs: dict) -> list[str]:
-    """Delete source uploads after a job finished, unless another job still
-    references them. Library files (lib:*) are never touched."""
-    cleaned = []
-    for sid in job.source_ids:
-        if sid.startswith("lib:") or not _store.get(sid):
-            continue
-        referenced_elsewhere = any(
-            sid in j.source_ids for jid, j in all_jobs.items()
-            if jid != job.id and j is not job)
-        if referenced_elsewhere:
-            continue
-        if remove(sid):
-            cleaned.append(sid)
-    # merge cover uploads are transient too
-    if job.mode == "merge" and job.merge and job.merge.cover_upload_id:
-        cover_id = job.merge.cover_upload_id
-        if cover_id in _store and not any(
-                cover_id in j.source_ids for jid, j in all_jobs.items() if jid != job.id):
-            remove(cover_id)
-    return cleaned
 
 
 async def save_stream(f: UploadFile) -> Upload:
@@ -120,3 +95,12 @@ def save_cover(f: UploadFile) -> Upload:
     u = Upload(id=upload_id, name=name, path=dst, size=size, info={"kind": "cover"})
     _store[u.id] = u
     return u
+
+
+def remove(upload_id: str, delete_file: bool = True) -> bool:
+    u = _store.pop(upload_id, None)
+    if not u:
+        return False
+    if delete_file:
+        u.path.unlink(missing_ok=True)
+    return True

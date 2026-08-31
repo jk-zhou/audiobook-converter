@@ -33,6 +33,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="upload">上传</button>
       <button class="tab" data-tab="library">书库</button>
+      <button class="tab" data-tab="uploads">已上传文件</button>
       <span class="small dim sort-hint">拖 ⠿ 调序 · 点列头排序 · 转换/合并按列表顺序（所见即所得）</span>
     </div>
 
@@ -43,6 +44,7 @@
         <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma" class="hidden">
         <input type="file" id="folder-input" webkitdirectory multiple class="hidden">
         <div id="upload-progress" class="upload-progress"></div>
+      <p class="hint">✕ / 清空 只会把文件从当前列表剔除，不删除数据（数据在「已上传文件」里统一管理）</p>
       </div>
       <div class="table-wrap">
         <table class="filetable">
@@ -60,6 +62,17 @@
       </div>
       <ul id="lib-list" class="filelist"></ul>
       <p class="hint">书库：<span id="lib-roots"></span></p>
+    </div>
+
+    <div id="panel-uploads" class="tabpane hidden">
+      <div class="lib-bar">
+        <button id="up-del-selected" class="btn small subtle">🗑 删除所选</button>
+        <button id="up-del-all" class="btn small subtle">🗑 删除全部未使用</button>
+        <button id="up-add-selected" class="btn small">⤵ 加入列表</button>
+        <span class="small dim" id="up-count"></span>
+      </div>
+      <ul id="uploads-list" class="filelist"></ul>
+      <p class="hint">🔒 = 正被任务使用（只读）。「⤵ 加入列表」把文件放回当前列表，无需重新上传。</p>
     </div>
   </section>
 

@@ -98,25 +98,28 @@ def test_concat_list_escapes_quotes(tmp_path):
     assert "\\'" in content   # quote escaped
 
 
-def test_cleanup_for_job(tmp_path, monkeypatch):
+def test_referenced_by_active(tmp_path):
+    """Active (queued/running) jobs lock their sources; finished ones don't."""
     from hac import uploads as up
-    from hac.models import Job, TranscodeSettings
+    from hac.models import Job, JobStatus, TranscodeSettings
 
-    monkeypatch.setattr(up, "_store", {})
-    f1 = tmp_path / "a.mp3"; f1.write_bytes(b"x")
-    f2 = tmp_path / "b.mp3"; f2.write_bytes(b"x")
-    for p, fid in ((f1, "u1"), (f2, "u2")):
-        up._store[fid] = up.Upload(id=fid, name=p.name, path=p, size=1)
+    j1 = Job(mode="single", source_ids=["u1"], output_filename="x",
+             settings=TranscodeSettings(format="mp3"))
+    j2 = Job(mode="single", source_ids=["u2"], output_filename="y",
+             settings=TranscodeSettings(format="mp3"))
+    j2.status = JobStatus.DONE
+    jobs = {"j1": j1, "j2": j2}
+    assert up.referenced_by_active("u1", jobs) is True    # queued/running lock
+    assert up.referenced_by_active("u2", jobs) is False   # done → deletable
 
-    j = Job(mode="single", source_ids=["u1"], output_filename="x",
-            settings=TranscodeSettings(format="mp3"))
-    cleaned = up.cleanup_for_job(j, {"j1": j})
-    assert cleaned == ["u1"]
-    assert not f1.exists() and f2.exists()
 
-    # lib files and files referenced by other jobs survive
-    lib_job = Job(mode="merge", source_ids=["lib:/x", "u2"], output_filename="m",
-                  settings=TranscodeSettings(format="m4b"))
-    cleaned2 = up.cleanup_for_job(lib_job, {"other": lib_job})
-    assert cleaned2 == ["u2"]          # "lib:/x" untouched, u2 consumed
-    assert not f2.exists()
+def test_remove_upload(tmp_path):
+    from hac import uploads as up
+    from hac.models import Upload
+    f = tmp_path / "a.mp3"
+    f.write_bytes(b"x")
+    up._store["u1"] = Upload(id="u1", name="a.mp3", path=f, size=1)
+    assert up.remove("u1") is True and not f.exists()
+    assert up.remove("u1") is False   # already gone
+
+

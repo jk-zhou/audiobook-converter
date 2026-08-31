@@ -88,6 +88,7 @@ class Job(BaseModel):
     mode: Literal["single", "merge"] = "single"
     source_ids: list[str] = []
     source_paths: list[Path] = []
+    source_names: list[str] = []       # 用户视角的源文件名快照（不含内部 id）
     output_filename: str
     settings: TranscodeSettings
     merge: MergeOptions | None = None

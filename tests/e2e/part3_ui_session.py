@@ -105,17 +105,54 @@ def main():
            and pg.input_value("#title-pattern") == "第${TrackNum:3}集")
         pg.screenshot(path=str(SHOTS / "10-new-layout.png"))
 
-        # F6: auto-cleanup of consumed uploads after job done
+        # F6: 任务完成后源文件保留；任务卡片「删除源文件」显式删除
+        pg.on("dialog", lambda d: d.accept())
         pg.uncheck("#merge-on")
         pg.select_option("#preset", "audiobook_aac_lc_64k")
         pg.click("#btn-start")
-        pg.wait_for_selector("#job-list .badge.done", timeout=90000)
-        pg.wait_for_timeout(1800)
-        ok("F6: 完成后上传自动清理", pg.evaluate("state.uploads.length") == 0,
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>j.status==='done')", timeout=90000)
+        pg.wait_for_timeout(1500)
+        ok("F6: 完成后源文件保留（不自动删除）",
+           pg.evaluate("state.uploads.length") >= 2,
            f"remaining={pg.evaluate('state.uploads.length')}")
-        ok("产物保留（任务仍在）",
-           pg.evaluate("Object.values(state.jobs).some(j=>j.status==='done')"))
-        pg.screenshot(path=str(SHOTS / "11-after-cleanup.png"))
+        ok("F6: 任务卡片有删除源文件按钮",
+           pg.locator('[data-act="delsrc"]').count() >= 1)
+        pg.click('[data-act="delsrc"]')   # confirm 自动接受（第一个任务）
+        pg.wait_for_timeout(1200)
+        pg.click('[data-act="delsrc"]')   # 第二个任务
+        pg.wait_for_timeout(1200)
+        ok("F6: 点击后源文件被删除", pg.evaluate("state.uploads.length") == 0,
+           f"remaining={pg.evaluate('state.uploads.length')}")
+        pg.screenshot(path=str(SHOTS / "11-after-src-delete.png"))
+
+        # 已上传文件 tab：列出 / 🔒引用保护 / 删除全部未使用 / 引用解除
+        pg.set_input_files("#file-input", ["/tmp/hac-e2e/long2.wav"])   # 长任务：锁窗口可观测
+        pg.wait_for_function("state.uploads.length >= 1", timeout=30000)
+        pg.select_option("#preset", "audiobook_opus_32k")
+        pg.click("#btn-start")   # 占住一个运行中任务 → 引用保护
+        pg.wait_for_timeout(1500)
+        pg.click('.tab[data-tab="uploads"]')
+        pg.wait_for_function(
+            "document.querySelectorAll('#uploads-list li').length >= 1", timeout=30000)
+        locked = pg.evaluate("state.uploadsAll.filter(u=>u.referenced).length")
+        ok("已上传 tab：被任务引用的条目标记 🔒", locked >= 1, f"locked={locked}")
+        pg.click("#up-del-all")   # 🔒 条目应被跳过
+        pg.wait_for_timeout(1200)
+        ok("已上传 tab：删除全部未使用（🔒 跳过）",
+           pg.evaluate("state.uploadsAll.every(u=>u.referenced)"),
+           str(pg.evaluate("state.uploadsAll.map(u=>u.referenced)")))
+        # 等任务结束 → 引用解除 → 再删除全部
+        pg.wait_for_function(
+            "!Object.values(state.jobs).some(j=>j.status==='running')", timeout=180000)
+        pg.click('.tab[data-tab="uploads"]')
+        pg.wait_for_timeout(600)
+        pg.click("#up-del-all")
+        pg.wait_for_timeout(1200)
+        ok("任务结束后引用解除、可全部清空",
+           pg.evaluate("state.uploadsAll.length") == 0,
+           f"remaining={pg.evaluate('state.uploadsAll.length')}")
+        pg.screenshot(path=str(SHOTS / "14-uploads-tab.png"))
 
         b.close()
 

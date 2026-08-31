@@ -68,12 +68,6 @@ class JobManager:
                         raise
                     except Exception as e:
                         self.set_status(jid, JobStatus.FAILED, error=f"{type(e).__name__}: {e}")
-                    if job.status == JobStatus.DONE:
-                        # auto-clean consumed uploads (files stay in outputs/)
-                        from . import uploads as uploads_mod
-                        cleaned = uploads_mod.cleanup_for_job(job, self.jobs)
-                        if cleaned:
-                            self.broadcast("uploads.changed", {"removed": cleaned})
             except asyncio.CancelledError:
                 raise
             except Exception:

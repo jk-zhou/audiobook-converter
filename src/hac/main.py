@@ -91,9 +91,43 @@ async def upload_cover(cover: UploadFile = File(...)):
 
 @app.get("/api/uploads")
 async def list_uploads():
-    """Current upload registry — lets a reopened page resume the session."""
-    return [{"id": u.id, "name": u.name, "size": u.size, "info": u.info}
+    """All stored uploads (uploads-library tab) + active-task reference flags."""
+    return [{"id": u.id, "name": u.name, "size": u.size, "info": u.info,
+             "referenced": uploads.referenced_by_active(u.id, jm.jobs)}
             for u in uploads.all_uploads()]
+
+
+class UploadsDeleteRequest(BaseModel):
+    ids: list[str]
+
+
+@app.delete("/api/uploads/{upload_id}")
+async def delete_upload(upload_id: str):
+    u = uploads.get(upload_id)
+    if not u:
+        raise HTTPException(404, "upload not found")
+    if uploads.referenced_by_active(upload_id, jm.jobs):
+        raise HTTPException(409, f"「{u.name}」正在被任务使用，不能删除")
+    uploads.remove(upload_id)
+    jm.broadcast("uploads.changed", {"removed": [upload_id]})
+    return {"ok": True}
+
+
+@app.post("/api/uploads/delete")
+async def delete_uploads_batch(req: UploadsDeleteRequest):
+    removed, skipped = [], []
+    for uid in req.ids:
+        u = uploads.get(uid)
+        if not u:
+            continue
+        if uploads.referenced_by_active(uid, jm.jobs):
+            skipped.append(u.name)
+            continue
+        uploads.remove(uid)
+        removed.append(uid)
+    if removed:
+        jm.broadcast("uploads.changed", {"removed": removed})
+    return {"removed": len(removed), "skipped": skipped}
 
 
 @app.get("/api/probe/{upload_id}")
@@ -230,7 +264,7 @@ async def create_job(req: JobCreate):
         raise HTTPException(400, "merge needs at least 2 sources")
     if req.mode == "merge" and len(req.source_ids) > config.MAX_MERGE_FILES:
         raise HTTPException(
-            400, f"合并文件数 {len(req.source_ids)} 超过上限 {config.MAX_MERGE_FILES}"
+            400, f"合并文件数 {len(req.source_ids)} 超过单个任务的上限 {config.MAX_MERGE_FILES}"
                  f"（可用 --max-merge-files 或 HAC_MAX_MERGE_FILES 调整）")
 
     paths = [_resolve_source(s) for s in req.source_ids]
@@ -241,7 +275,7 @@ async def create_job(req: JobCreate):
             used = (f"{total / (1 << 30):.2f}GB" if total >= (1 << 30)
                     else f"{total / (1 << 20):.1f}MB")
             raise HTTPException(
-                400, f"合并总体积 {used} 超过上限 "
+                400, f"本任务合并总体积 {used} 超过单个任务的上限 "
                      f"{config.MAX_MERGE_GB}GB（可用 --max-merge-gb 或 HAC_MAX_MERGE_GB 调整）")
 
     # preset provides the base settings; request fields act as explicit overrides
@@ -270,10 +304,16 @@ async def create_job(req: JobCreate):
                 update={"book_title": _uploads.display_stem(req.source_ids[0])
                         or paths[0].stem})
 
+    source_names = []
+    for sid, path in zip(req.source_ids, paths):
+        from . import uploads as _up
+        source_names.append(Path(_up.display_stem(sid) or path.stem).name)
+
     job = Job(
         mode=req.mode,
         source_ids=req.source_ids,
         source_paths=paths,
+        source_names=source_names,
         output_filename=req.output_filename or _default_output_name(req, paths),
         settings=settings,
         metadata=req.metadata,

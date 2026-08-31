@@ -58,16 +58,12 @@ const fmtDur = (s) => {
 
 const SESSION_KEY = "hac.session.v1";
 
-let _saveTimer = null;
 function saveSession() {
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(_saveSessionNow, 200);
-}
-
-function _saveSessionNow() {
+  // 同步写：会话必须精确反映最后一次调用的状态（防抖会让清空后被旧值覆盖）
   try {
-    const libPicks = state.uploads.filter((u) => u.kind === "lib")
-      .map((u) => ({ id: u.id, name: u.name, size: u.size }));
+    const workingSet = state.uploads.map((u) =>
+      ({ id: u.id, name: u.name, size: u.size, kind: u.kind,
+         lastModified: u.lastModified }));
     const s = {
       preset: $("preset").value,
       format: $("format").value,
@@ -88,7 +84,7 @@ function _saveSessionNow() {
       titlePattern: $("title-pattern").value,
       sort: state.sort,
       columns: state.columns,
-      libPicks,
+      workingSet,
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   } catch (e) { /* storage unavailable */ }
@@ -118,30 +114,11 @@ function restoreSession() {
   setv("title-pattern", s.titlePattern);
   if (s.sort) state.sort = s.sort;
   if (s.columns) state.columns = { ...state.columns, ...s.columns };
-  if (Array.isArray(s.libPicks)) {
-    for (const p of s.libPicks) {
-      if (!state.uploads.some((u) => u.id === p.id))
-        state.uploads.push({ ...p, kind: "lib", order: state.uploads.length });
-    }
-  }
+  state.sessionWorkingSet = Array.isArray(s.workingSet) ? s.workingSet
+    : (Array.isArray(s.libPicks) ? s.libPicks.map((x) => ({ ...x, kind: "lib" })) : []);
 }
 
 let _uploadsFetchSeq = 0;
-async function fetchUploads() {
-  const seq = ++_uploadsFetchSeq;
-  try {
-    const res = await (await fetch("/api/uploads")).json();
-    if (seq !== _uploadsFetchSeq) return;          // superseded by a newer call
-    const known = new Set(state.uploads.map((u) => u.id));
-    // cover uploads live in the same server registry — never list them
-    const add = res
-      .filter((u) => !known.has(u.id) && !(u.info && u.info.kind === "cover"))
-      .map((u) => ({ ...u, kind: "upload", order: state.uploads.length }));
-    state.uploads.push(...add);
-    renderFiles();
-  } catch (e) { /* server unreachable */ }
-}
-
 /* ============ health & presets ============ */
 
 async function loadHealth() {
@@ -502,13 +479,141 @@ function wireDrop() {
 
 /* ============ tabs & library ============ */
 
+/* ============ 已上传文件 tab（服务端注册表管理） ============ */
+
+function isReferenced(u) {
+  return !!u.referenced || Object.values(state.jobs).some(
+    (j) => ACTIVE.has(j.status) && j.source_ids.includes(u.id));
+}
+
+async function refreshUploadsLibrary() {
+  try {
+    state.uploadsAll = await (await fetch("/api/uploads")).json();
+    renderUploadsLibrary();
+  } catch (e) { /* unreachable */ }
+}
+
+function renderUploadsLibrary() {
+  const ul = $("uploads-list");
+  if (!ul) return;
+  const rows = state.uploadsAll;
+  const cnt = $("up-count");
+  if (cnt) cnt.textContent = `共 ${rows.length} 个文件`;
+  ul.innerHTML = "";
+  if (!rows.length) {
+    ul.innerHTML = `<li class="empty">暂无已上传文件</li>`;
+    return;
+  }
+  for (const u of rows) {
+    const locked = isReferenced(u);
+    const isCover = u.info && u.info.kind === "cover";
+    const li = document.createElement("li");
+    li.innerHTML =
+      `<input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""}>` +
+      `<span class="name">${isCover ? "🖼" : "🎵"} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</span>` +
+      `<span class="meta">${fmtSize(u.size)}</span>` +
+      (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">⤵ 加入列表</button>`) +
+      `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" ${locked ? "disabled" : ""}>✕</button>`;
+    ul.appendChild(li);
+  }
+  ul.querySelectorAll("[data-add]").forEach((b) => {
+    b.onclick = () => addToWorkingSet(b.dataset.add);
+  });
+  ul.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = async () => {
+      const res = await fetch(`/api/uploads/${b.dataset.del}`, { method: "DELETE" });
+      if (res.status === 409) {
+        const d = await res.json();
+        alert(d.detail);
+      } else if (!res.ok) {
+        alert("删除失败: HTTP " + res.status);
+      }
+      refreshUploadsLibrary();
+    };
+  });
+}
+
+function addToWorkingSet(id) {
+  if (state.uploads.some((u) => u.id === id)) { alert("该文件已在当前列表中"); return; }
+  const u = state.uploadsAll.find((x) => x.id === id);
+  if (!u) return;
+  state.uploads.push({ ...u, kind: "upload", order: state.uploads.length });
+  renderFiles();
+  saveSession();
+  toast(`已加入当前列表：${u.name}`);
+}
+
+async function deleteUploads(ids) {
+  if (!ids.length) return;
+  const res = await fetch("/api/uploads/delete", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) { alert("删除失败: HTTP " + res.status); return; }
+  const { removed, skipped } = await res.json();
+  if (skipped.length) toast(`跳过 ${skipped.length} 个正被任务使用的文件：${skipped[0]}${skipped.length > 1 ? " 等" : ""}`);
+  else if (removed) toast(`已删除 ${removed} 个文件`);
+  refreshUploadsLibrary();
+}
+
+function wireUploadsLibrary() {
+  $("up-del-selected").onclick = () => {
+    const ids = [...document.querySelectorAll("#uploads-list input.up-pick:checked")]
+      .map((cb) => cb.dataset.upid);
+    if (!ids.length) { alert("请先勾选要删除的文件"); return; }
+    deleteUploads(ids);
+  };
+  $("up-del-all").onclick = () => {
+    const deletable = state.uploadsAll.filter((u) => !isReferenced(u) &&
+      !(u.info && u.info.kind === "cover")).map((u) => u.id);
+    if (!deletable.length) { alert("没有可删除的文件（正被任务使用的为只读）"); return; }
+    if (!confirm(`确定删除 ${deletable.length} 个未被任务使用的文件？此操作不可恢复`)) return;
+    deleteUploads(deletable);
+  };
+  $("up-add-selected").onclick = () => {
+    const ids = [...document.querySelectorAll("#uploads-list input.up-pick:checked")]
+      .map((cb) => cb.dataset.upid).filter((id) => {
+        const u = state.uploadsAll.find((x) => x.id === id);
+        return u && !(u.info && u.info.kind === "cover");
+      });
+    if (!ids.length) { alert("请先勾选要加入的音频文件"); return; }
+    let added = 0;
+    for (const id of ids) {
+      if (state.uploads.some((u) => u.id === id)) continue;
+      const u = state.uploadsAll.find((x) => x.id === id);
+      state.uploads.push({ ...u, kind: "upload", order: state.uploads.length });
+      added++;
+    }
+    renderFiles();
+    saveSession();
+    toast(`已加入 ${added} 个文件到当前列表`);
+  };
+}
+
+/* ============ toast ============ */
+
+function toast(msg, ms = 3500) {
+  let t = $("toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove("show"), ms);
+}
+
 function wireTabs() {
   document.querySelectorAll(".tab").forEach((t) => {
     t.onclick = () => {
       document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
       $("pane-upload").classList.toggle("hidden", t.dataset.tab !== "upload");
       $("panel-library").classList.toggle("hidden", t.dataset.tab !== "library");
+      $("panel-uploads").classList.toggle("hidden", t.dataset.tab !== "uploads");
       if (t.dataset.tab === "library") loadRoots();
+      if (t.dataset.tab === "uploads") refreshUploadsLibrary();
     };
   });
 }
@@ -655,6 +760,22 @@ const STATUS_TXT = {
 };
 const ACTIVE = new Set(["queued", "running", "tagging", "merging"]);
 
+function paramSummary(j) {
+  const st = j.settings || {};
+  const bits = [];
+  if (j.preset_id) {
+    const p = state.presets.find((x) => x.id === j.preset_id);
+    if (p) bits.push(p.name.replace(/^有声书 · /, ""));
+  }
+  if (!j.preset_id && st.format) bits.push(String(st.format).toUpperCase());
+  if (st.profile) bits.push(st.profile);
+  if (st.bitrate) bits.push(st.bitrate);
+  if (st.samplerate) bits.push(st.samplerate + "Hz");
+  if (st.channels) bits.push(st.channels + "ch");
+  if (j.normalize) bits.push("loudnorm");
+  return bits.join(" · ") || "默认参数";
+}
+
 function jobCardHTML(j) {
   const p = (j.progress || 0).toFixed(1);
   let html =
@@ -664,7 +785,7 @@ function jobCardHTML(j) {
       `<span class="badge ${j.status}">${STATUS_TXT[j.status] || j.status}</span>` +
     `</div>` +
     `<div class="pbar"><div style="width:${p}%"></div></div>` +
-    `<div class="small pct-text" style="color:var(--dim)">${p}%</div>`;
+    `<div class="small pct-text" style="color:var(--dim)">${p}% · ${escapeHtml(paramSummary(j))}</div>`;
   if (j.verify) {
     const v = j.verify;
     html += `<div class="verify">✓ <b>${escapeHtml(v.codec)}</b> · <b>${Math.round((v.bitrate || 0) / 1000)}k</b>` +
@@ -673,6 +794,22 @@ function jobCardHTML(j) {
       `</div>`;
   }
   if (j.error) html += `<div class="joberr">✗ ${escapeHtml(j.error)}</div>`;
+
+  // 源文件清单（默认折叠）+ 显式删除源文件
+  const srcNames = (j.source_names && j.source_names.length)
+    ? j.source_names
+    : j.source_ids.map((sid) => sid.startsWith("lib:") ? sid.slice(4).split("/").pop() : sid);
+  const canDelSources = ["done", "failed", "cancelled"].includes(j.status)
+    && !j._srcDeleted
+    && j.source_ids.some((sid) => !sid.startsWith("lib:"));
+  html += `<div class="job-src">` +
+    `<button class="linklike" data-act="togglesrc" data-id="${j.id}">▸ 源文件（${srcNames.length}）</button>` +
+    (canDelSources ? `<button class="linklike danger" data-act="delsrc" data-id="${j.id}">🗑 删除源文件</button>` : "") +
+    `</div>` +
+    `<ul class="job-src-list hidden" id="src-${j.id}">` +
+    srcNames.map((n) => `<li>🎵 ${escapeHtml(n)}</li>`).join("") +
+    `</ul>`;
+
   const acts = [];
   if (j.status === "done") acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">⬇ 下载</button>`);
   if (j.status === "failed" || j.status === "cancelled")
@@ -690,6 +827,27 @@ function bindJobActions(scope) {
       if (act === "dl") location.href = `/api/jobs/${id}/download`;
       else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
       else if (act === "cancel") await fetch(`/api/jobs/${id}`, { method: "DELETE" });
+      else if (act === "togglesrc") {
+        const list = document.getElementById(`src-${id}`);
+        if (list) list.classList.toggle("hidden");
+      } else if (act === "delsrc") {
+        const j = state.jobs[id];
+        if (!j) return;
+        const ids = j.source_ids.filter((sid) => !sid.startsWith("lib:"));
+        if (!ids.length) return;
+        if (!confirm(`删除该任务的 ${ids.length} 个源文件？转换结果不受影响，此操作不可恢复`)) return;
+        const res = await fetch("/api/uploads/delete", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+        if (res.ok) {
+          const { removed, skipped } = await res.json();
+          toast(`已删除 ${removed} 个源文件` +
+            (skipped.length ? `；跳过 ${skipped.length} 个正被其他任务使用的文件` : ""));
+          if (removed > 0) state.jobs[id]._srcDeleted = true;
+          renderJobs();
+        }
+      }
     };
   });
 }
@@ -737,12 +895,16 @@ function connectSSE() {
     else renderJobs();
   });
   es.addEventListener("uploads.changed", (e) => {
-    // auto-cleanup after a finished job: drop the consumed entries exactly
+    // 文件被删除（已上传 tab / 任务卡片删除源文件）：工作集剔除 + 相关任务标记
     let removed = [];
     try { removed = JSON.parse(e.data).removed || []; } catch (err) {}
     const gone = new Set(removed);
     state.uploads = state.uploads.filter((u) => !gone.has(u.id));
+    for (const j of Object.values(state.jobs)) {
+      if (j.source_ids.some((sid) => gone.has(sid))) j._srcDeleted = true;
+    }
     renderFiles();
+    renderJobs();
     saveSession();
   });
 }
@@ -915,6 +1077,28 @@ function wireLibrary() {
   };
 }
 
+function restoreWorkingSetFromSession() {
+  const saved = state.sessionWorkingSet || [];
+  if (!saved.length) return;
+  fetch("/api/uploads").then((r) => r.json()).then((reg) => {
+    const live = new Set(reg.map((u) => u.id));
+    for (const x of saved) {
+      if (x.kind !== "lib" && !live.has(x.id)) continue;   // 文件已删除 → 丢弃
+      if (state.uploads.some((u) => u.id === x.id)) continue;
+      state.uploads.push(x.kind === "lib"
+        ? { ...x, kind: "lib", order: state.uploads.length }
+        : { ...byIdReg(reg, x.id), kind: "upload", lastModified: x.lastModified,
+            order: state.uploads.length });
+    }
+    renderFiles();
+    updateMergeHint();
+  }).catch(() => {});
+}
+
+function byIdReg(reg, id) {
+  return reg.find((u) => u.id === id) || { id, name: id, size: 0 };
+}
+
 function init() {
   populateFormatCodec();
   restoreSession();
@@ -925,10 +1109,11 @@ function init() {
   wireTabs();
   wireSettings();
   wireLibrary();
+  wireUploadsLibrary();
   wireHeaderButtons();
   connectSSE();
   $("btn-sort-reset").classList.toggle("hidden", state.sort.key == null);
-  fetchUploads();
+  restoreWorkingSetFromSession();
   renderFiles();
   updateMergeHint();
 }
