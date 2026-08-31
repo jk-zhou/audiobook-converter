@@ -442,13 +442,18 @@ metadata.write_tags(output_path, job.metadata, inherited=inherited)
 - 设置/排序/列配置/目录勾选存 `localStorage`（`hac.session.v1`），刷新即恢复
 - 任务列表随服务进程存活（SSE job.list 恢复）；服务重启仍清空（v0.3 SQLite 范围）
 
-### 6.7 任务完成自动清理上传文件（2026-08-30 新增）
+### 6.7 源文件手动管理（2026-08-31 设计修订，取代自动清理）
 
-任务 DONE 后自动删除其消费的上传源文件（`data/uploads/`）及 merge 封面临时文件：
+设计决定（评审定案）：**任务完成后不自动删除源文件**，删除是显式动作。
 
-- **本地目录文件（`lib:*`）永不删除**；被其他任务引用的文件跳过
-- 清理后广播 `uploads.changed`，前端同步移除列表项
-- 失败/取消的任务不清理（可重试）；outputs/ 产物不受影响
+- 「已上传文件」tab：服务端注册表全量展示（`GET /api/uploads` 含 `referenced` 标志）
+  - 🔒 被活跃任务引用的条目只读（前端禁用勾选 + 后端 409 双重保护）
+  - 🗑 单个删除（`DELETE /api/uploads/{id}`）/ 多选删除 / 全部未使用删除（`POST /api/uploads/delete`）
+  - ⤵「加入列表」把已有文件放回当前工作集，无需重传
+- 「上传」页的 ✕/清空 = 仅从工作集剔除引用，**不删除文件数据**
+- 任务卡片（完成/失败/取消）：折叠的源文件清单 + 参数摘要 + 「🗑 删除源文件」（批量删除该任务的 upload 源；`lib:*` 与 outputs/ 产物不受影响；被其他活跃任务引用的自动跳过并在 toast 提示）
+- 合并/单文件上限为**每个任务**的上限（3000 文件 / 10GB，可配）
+- SSE `uploads.changed {removed:[ids]}`：删除后工作集剔除 + 相关任务卡片标记 `_srcDeleted`
 
 ### 6.8 滚动日志（2026-08-30 新增）
 
@@ -484,7 +489,7 @@ uvicorn/uvicorn.error/uvicorn.access/hac 全部接入；访问日志仅记录 4x
 - 上传：`XMLHttpRequest` + `upload.onprogress` → 逐文件进度条（修复 v1 fetch 无法显示进度的问题）
 - 预设联动：选预设填表；手改任意参数字段 → 预设下拉回"— 自定义 —"
 - 合并开关：勾选后 Settings 面板出现 书名/作者/封面，并要求文件列表 ≥2（按列表顺序 concat）
-- 目录浏览器：FILES 栏切换"本地目录"模式，走 `/api/library/list`
+- 目录浏览器：FILES 栏切换「书库」视图（根目录以书库名展示、只显示相对路径，不暴露服务器文件系统），走 `/api/library/list`
 - 任务卡片：状态色 + 进度条 + verify 面板 + 失败 error + retry/下载
 - 顶部操作条：全部下载 zip / 清空已完成 / 取消全部
 
