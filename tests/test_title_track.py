@@ -57,10 +57,28 @@ def test_source_track_wins_over_position(tmp_path):
 
 
 def test_title_from_filename(tmp_path):
+    from hac import uploads
     src = _mk_source(tmp_path, "第04集 标题.mp3", with_track=False)
-    title, _ = resolve_title_and_track(
-        _job(tmp_path, src, title_source="filename"), src)
+    job = _job(tmp_path, src, title_source="filename")
+    title, _ = resolve_title_and_track(job, src)
     assert title == "第04集 标题"
+
+
+def test_title_from_filename_no_id_prefix(tmp_path, monkeypatch):
+    """title_source=filename 也不得泄漏内部存储前缀。"""
+    import uuid
+    from hac import uploads
+    from hac.models import Upload
+    src = tmp_path / "deadbeef1234_第09集 无标签.mp3"
+    src.write_bytes(b"x")
+    fid = uuid.uuid4().hex[:12]
+    monkeypatch.setattr(uploads, "_store",
+                        {fid: Upload(id=fid, name="第09集 无标签.mp3", path=src, size=1)})
+    job = _job(tmp_path, src, title_source="filename")
+    job.source_ids = [fid]
+    title, _ = resolve_title_and_track(job, src)
+    assert title == "第09集 无标签"
+    assert "deadbeef" not in title
 
 
 def test_title_from_pattern_uses_source_track_then_position(tmp_path):

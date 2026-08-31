@@ -7,7 +7,7 @@ const state = {
   uploads: [],        // WYSIWYG list: [{id,name,size,info,lastModified,order,kind:'upload'|'lib'}]
   libMeta: {},        // "lib:<path>" -> {title,track,album,artist,composer,duration}
   libPath: "",
-  libRoots: [],
+  libRoots: [],       // [{path, name}] —— name = 面向用户的书库名（根目录名）
   presets: [],
   jobs: {},
   coverUploadId: null,
@@ -19,7 +19,7 @@ const state = {
 const COLUMNS = [
   { key: "name",     label: "文件名" },
   { key: "title",    label: "标题" },
-  { key: "track",    label: "Track" },
+  { key: "track",    label: "章节/编号" },
   { key: "album",    label: "专辑" },
   { key: "artist",   label: "作者" },
   { key: "composer", label: "演播者" },
@@ -513,18 +513,41 @@ function wireTabs() {
   });
 }
 
+function displayLibPath(abs) {
+  // 只展示书库名 + 相对路径，不暴露服务器文件系统结构
+  for (const r of state.libRoots) {
+    if (abs === r.path) return r.name;
+    if (abs.startsWith(r.path + "/"))
+      return r.name + "/" + abs.slice(r.path.length + 1);
+  }
+  return abs.split("/").pop() || abs;
+}
+
 async function libLoad(path) {
   const ul = $("lib-list");
   try {
+    if (!path && state.libRoots.length > 1) {
+      // 顶层：把每个书库根显示为一个虚拟文件夹
+      state.libPath = "";
+      $("lib-path").textContent = "选择书库";
+      ul.innerHTML = "";
+      for (const r of state.libRoots) {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="icon">📚</span><span class="name" style="cursor:pointer">${escapeHtml(r.name)}/</span>`;
+        li.onclick = () => libLoad(r.path);
+        ul.appendChild(li);
+      }
+      return;
+    }
     const res = await fetch("/api/library/list?path=" + encodeURIComponent(path || ""));
     if (res.status === 403) {
-      ul.innerHTML = `<li class="empty">⛔ 无权访问（白名单外路径）</li>`;
+      ul.innerHTML = `<li class="empty">⛔ 无权访问（不在书库范围内）</li>`;
       return;
     }
     if (!res.ok) { ul.innerHTML = `<li class="empty">HTTP ${res.status}</li>`; return; }
     const data = await res.json();
     state.libPath = data.path;
-    $("lib-path").textContent = data.path;
+    $("lib-path").textContent = displayLibPath(data.path);
     ul.innerHTML = "";
     if (!data.dirs.length && !data.files.length)
       ul.innerHTML = `<li class="empty">空目录（无音频文件）</li>`;
@@ -577,7 +600,10 @@ async function ensureLibMeta() {
 async function loadRoots() {
   try {
     const res = await (await fetch("/api/library/roots")).json();
-    $("lib-roots").textContent = res.roots.join(" ; ");
+    // 兼容旧格式（字符串数组）：显示名取根目录 basename，不暴露真实路径
+    state.libRoots = res.roots.map((r) =>
+      typeof r === "string" ? { path: r, name: r.split("/").filter(Boolean).pop() || r } : r);
+    $("lib-roots").textContent = state.libRoots.map((r) => r.name).join(" ; ");
   } catch (e) { /* ignore */ }
   libLoad("");
 }

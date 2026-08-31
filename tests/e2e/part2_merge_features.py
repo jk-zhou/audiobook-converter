@@ -156,7 +156,7 @@ def main():
         pg2.click('.tab[data-tab="library"]')
         pg2.wait_for_function(
             "document.querySelectorAll('#lib-list li').length > 0", timeout=10000)
-        ok("library roots shown", "library" in pg2.inner_text("#lib-roots"))
+        ok("library roots shown (书库名)", "library" in pg2.inner_text("#lib-roots"))
         pg2.get_by_text("testbook/").click()
         pg2.wait_for_function(
             "[...document.querySelectorAll('#lib-list .name')]"
@@ -179,6 +179,7 @@ def main():
            f"n={len(lib_jobs)}")
         r1 = pg2.request.get(f"{BASE}/api/library/list?path=/etc")
         ok("403 outside whitelist", r1.status == 403, f"status={r1.status}")
+        ok("UI 不暴露服务器路径", "/home/" not in pg2.inner_text("#col-files"))
         pg2.close()
         pg.screenshot(path=str(SHOTS / "07-library.png"))
 

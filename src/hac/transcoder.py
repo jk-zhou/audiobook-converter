@@ -65,7 +65,9 @@ def resolve_title_and_track(job: Job, src: Path) -> tuple[str | None, tuple[int,
 
     title = None
     if job.title_source == "filename":
-        title = src.stem
+        from . import uploads
+        sid = job.source_ids[0] if job.source_ids else None
+        title = (sid and uploads.display_stem(sid)) or src.stem
     elif job.title_source == "pattern" and job.title_pattern:
         title = render_title_pattern(job.title_pattern, src_track if src_track else job.position)
 

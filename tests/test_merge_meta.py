@@ -25,7 +25,8 @@ def test_escape_special_chars():
 
 
 def test_chapter_titles_fallback(monkeypatch, tmp_path):
-    from hac import metadata
+    from hac import metadata, uploads
+    from hac.models import Job, TranscodeSettings
     f1 = tmp_path / "第01集 有声书.flac"
     f1.write_bytes(b"x")
     f2 = tmp_path / "第02集.flac"
@@ -33,5 +34,26 @@ def test_chapter_titles_fallback(monkeypatch, tmp_path):
 
     monkeypatch.setattr(metadata, "read_source_tags",
                         lambda p: {"title": "真标题"} if "01" in p.name else {})
-    titles = chapter_titles([f1, f2])
+    job = Job(mode="merge", source_paths=[f1, f2], output_filename="x",
+              settings=TranscodeSettings(format="m4b"))
+    titles = chapter_titles(job)
     assert titles == ["真标题", "第02集"]
+
+
+def test_chapter_titles_no_id_prefix(monkeypatch, tmp_path):
+    """上传文件的磁盘名带 {upload_id}_ 前缀——章节名绝不能泄漏它。"""
+    import uuid
+    from hac import metadata, uploads
+    from hac.models import Job, TranscodeSettings, Upload
+    f1 = tmp_path / "ccf4f9017ec1_007《诛仙》第5集.m4a"
+    f1.write_bytes(b"x")
+    fid = uuid.uuid4().hex[:12]
+    monkeypatch.setattr(uploads, "_store",
+                        {fid: Upload(id=fid, name="007《诛仙》第5集.m4a",
+                                     path=f1, size=1)})
+    monkeypatch.setattr(metadata, "read_source_tags", lambda p: {})  # 源无 title
+    job = Job(mode="merge", source_ids=[fid], source_paths=[f1],
+              output_filename="x", settings=TranscodeSettings(format="m4b"))
+    titles = chapter_titles(job)
+    assert titles == ["007《诛仙》第5集"]
+    assert "ccf4f9017ec1" not in titles[0]

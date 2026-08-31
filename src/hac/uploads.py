@@ -20,6 +20,17 @@ def get(upload_id: str) -> Upload | None:
     return _store.get(upload_id)
 
 
+def display_stem(source_id: str) -> str | None:
+    """User-facing filename stem for a source id (never leaks the internal
+    '{upload_id}_' storage prefix). Library files use their own path."""
+    if source_id.startswith("lib:"):
+        return Path(source_id[4:]).stem
+    u = _store.get(source_id)
+    if u:
+        return Path(u.name).stem
+    return None
+
+
 def all_uploads() -> list[Upload]:
     return list(_store.values())
 

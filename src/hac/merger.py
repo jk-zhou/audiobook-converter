@@ -97,14 +97,20 @@ def build_finalize_args(
     return args
 
 
-def chapter_titles(sources: list[Path]) -> list[str]:
+def chapter_titles(job: Job) -> list[str]:
+    """Chapter title per source: title tag → clean filename stem (no internal
+    upload-id prefix)."""
+    from . import uploads
     titles = []
-    for s in sources:
+    for i, s in enumerate(job.source_paths):
         try:
             tags = metadata.read_source_tags(s)
         except Exception:
             tags = {}
-        titles.append(tags.get("title") or s.stem)
+        stem = None
+        if i < len(job.source_ids):
+            stem = uploads.display_stem(job.source_ids[i])
+        titles.append(tags.get("title") or stem or s.stem)
     return titles
 
 
@@ -305,7 +311,7 @@ async def execute_merge(job: Job, mgr) -> None:
     if len(sources) <= MERGE_CHUNK:
         meta_file = work / f"{job.id}_chapters.txt"
         meta_file.write_text(
-            build_chapter_meta(durations, chapter_titles(sources),
+            build_chapter_meta(durations, chapter_titles(job),
                                book_title=book.book_title if book else None,
                                book_artist=book.book_artist if book else None,
                                composer=book.composer if book else None),
@@ -366,7 +372,7 @@ async def execute_merge(job: Job, mgr) -> None:
         meta_file.write_text(
             build_chapter_meta_chunked(
                 [d for d in part_durs if d is not None], chunk_sizes,
-                durations, chapter_titles(sources),
+                durations, chapter_titles(job),
                 book_title=book.book_title if book else None,
                 book_artist=book.book_artist if book else None,
                 composer=book.composer if book else None),

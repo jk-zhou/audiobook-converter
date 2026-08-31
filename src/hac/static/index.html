@@ -32,7 +32,7 @@
 
     <div class="tabs">
       <button class="tab active" data-tab="upload">上传</button>
-      <button class="tab" data-tab="library">本地目录</button>
+      <button class="tab" data-tab="library">书库</button>
       <span class="small dim sort-hint">拖 ⠿ 调序 · 点列头排序 · 转换/合并按列表顺序（所见即所得）</span>
     </div>
 
@@ -49,17 +49,17 @@
           <thead id="file-head"></thead>
           <tbody id="file-list"></tbody>
         </table>
-        <div id="file-empty" class="empty">还没有文件 — 拖入音频/文件夹，或从「本地目录」勾选</div>
+        <div id="file-empty" class="empty">还没有文件 — 拖入音频/文件夹，或从「书库」勾选</div>
       </div>
     </div>
 
     <div id="panel-library" class="tabpane hidden">
       <div class="lib-bar">
         <button id="lib-up" class="btn small subtle">⬆ 上级</button>
-        <span id="lib-path" class="mono small"></span>
+        <span id="lib-path" class="small"></span>
       </div>
       <ul id="lib-list" class="filelist"></ul>
-      <p class="hint">白名单根：<span id="lib-roots"></span></p>
+      <p class="hint">书库：<span id="lib-roots"></span></p>
     </div>
   </section>
 

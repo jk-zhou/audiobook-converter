@@ -83,7 +83,7 @@ stop_server() {
 }
 
 FAILED=0
-PARTS="part1_transcode part2_merge_features part3_ui_session"
+PARTS="part1_transcode part2_merge_features part3_ui_session part4_multi_task"
 if [ "$ONLY" != "all" ]; then
     PARTS=""
     for want in $ONLY; do

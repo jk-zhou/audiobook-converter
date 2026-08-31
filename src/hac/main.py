@@ -108,7 +108,8 @@ async def probe_upload(upload_id: str):
 
 @app.get("/api/library/roots")
 async def library_roots():
-    return {"roots": [str(r) for r in config.LIBRARY_ROOTS]}
+    # name = 根目录 basename（面向用户显示），path 仅用于前端回传导航
+    return {"roots": [{"path": str(r), "name": r.name or str(r)} for r in config.LIBRARY_ROOTS]}
 
 
 @app.get("/api/library/list")
@@ -191,8 +192,10 @@ def _resolve_source(sid: str) -> Path:
 
 
 def _default_output_name(req: JobCreate, paths: list[Path]) -> str:
+    from . import uploads
+    stem = uploads.display_stem(req.source_ids[0]) or paths[0].stem
     if req.mode == "merge":
-        base = (req.merge.book_title if req.merge else None) or paths[0].stem
+        base = (req.merge.book_title if req.merge else None) or stem
         return str(base)
     ext = req.settings.format if req.settings else "opus"
     suffix = ""
@@ -200,7 +203,7 @@ def _default_output_name(req: JobCreate, paths: list[Path]) -> str:
         p = presets.get_preset(req.preset_id)
         if p:
             suffix = p.filename_suffix
-    return f"{paths[0].stem}{suffix}.{ext}"
+    return f"{stem}{suffix}.{ext}"
 
 
 M4B_CODECS = {"aac", "libfdk_aac"}
@@ -262,7 +265,10 @@ async def create_job(req: JobCreate):
         settings = settings.model_copy(update={"format": "m4b"})
         validate_merge_settings(settings)
         if not merge_opts.book_title:
-            merge_opts = merge_opts.model_copy(update={"book_title": paths[0].stem})
+            from . import uploads as _uploads
+            merge_opts = merge_opts.model_copy(
+                update={"book_title": _uploads.display_stem(req.source_ids[0])
+                        or paths[0].stem})
 
     job = Job(
         mode=req.mode,
