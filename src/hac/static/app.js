@@ -4,7 +4,9 @@
 const $ = (id) => document.getElementById(id);
 
 const state = {
-  uploads: [],        // [{id,name,size,info}] from /api/upload
+  uploads: [],        // [{id,name,size,info,lastModified}] in WYSIWYG order
+  libMeta: {},        // "lib:<path>" -> {title, track} (probed on demand)
+  sortMode: "upload",
   libPath: "",
   libRoots: [],
   presets: [],
@@ -105,6 +107,10 @@ async function uploadFiles(fileList) {
       xhr.onload = () => {
         if (xhr.status === 200) {
           const { uploads } = JSON.parse(xhr.responseText);
+          for (const u of uploads) {
+            u.lastModified = f.lastModified;
+            u.order = state.uploads.length;   // original upload sequence
+          }
           state.uploads.push(...uploads);
           scheduleRender();
           bar.style.width = "100%";
@@ -139,10 +145,13 @@ function renderFiles() {
   if (!state.uploads.length) {
     ul.innerHTML = `<li class="empty">尚未上传文件</li>`;
   }
-  for (const u of state.uploads) {
+  state.uploads.forEach((u, i) => {
     const li = document.createElement("li");
+    li.draggable = true;
+    li.dataset.idx = i;
     const dur = u.info && u.info.duration ? " · " + fmtDur(u.info.duration) : "";
-    li.innerHTML = `<span class="name">🎵 ${escapeHtml(u.name)}</span>` +
+    li.innerHTML = `<span class="handle">⠿</span><span class="pos">${i + 1}</span>` +
+      `<span class="name">🎵 ${escapeHtml(u.name)}</span>` +
       `<span class="meta">${fmtSize(u.size)}${dur}</span>` +
       `<button class="del" title="移除">✕</button>`;
     li.querySelector(".del").onclick = () => {
@@ -150,9 +159,117 @@ function renderFiles() {
       if (state.coverUploadId === u.id) state.coverUploadId = null;
       renderFiles();
     };
+    li.addEventListener("dragstart", (e) => {
+      li.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(i));
+    });
+    li.addEventListener("dragend", () => li.classList.remove("dragging"));
+    li.addEventListener("dragover", (e) => e.preventDefault());
+    li.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const from = parseInt(e.dataTransfer.getData("text/plain"));
+      if (isNaN(from) || from === i) return;
+      const [moved] = state.uploads.splice(from, 1);
+      state.uploads.splice(i, 0, moved);
+      renderFiles();
+    });
     ul.appendChild(li);
-  }
+  });
   updateMergeHint();
+}
+
+/* ---- WYSIWYG sorting ---- */
+
+function naturalName(name) {
+  return name.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+}
+
+function naturalCompare(a, b) {
+  // chunk into digit / non-digit runs: "第2集" < "第10集"
+  const A = naturalName(a).match(/\d+|\D+/g) || [];
+  const B = naturalName(b).match(/\d+|\D+/g) || [];
+  for (let k = 0; k < Math.max(A.length, B.length); k++) {
+    if (A[k] === undefined) return -1;
+    if (B[k] === undefined) return 1;
+    const an = /^\d/.test(A[k]), bn = /^\d/.test(B[k]);
+    if (an && bn) {
+      const d = parseInt(A[k], 10) - parseInt(B[k], 10);
+      if (d) return d;
+    } else if (an !== bn) {
+      return an ? -1 : 1;
+    } else {
+      const c = A[k].localeCompare(B[k]);
+      if (c) return c;
+    }
+  }
+  return 0;
+}
+
+function parseTrackTag(raw) {
+  if (raw == null) return null;
+  const m = String(raw).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function uploadMeta(u) {
+  // probe tags from the upload response: {title, track, ...}
+  const tags = (u.info && u.info.tags) || {};
+  return { title: tags.title || tags.TITLE || null, track: parseTrackTag(tags.track ?? tags.TRCK ?? tags.tracknumber) };
+}
+
+async function ensureLibMeta() {
+  const missing = [...document.querySelectorAll("#lib-list input.libpick:checked")]
+    .map((cb) => cb.dataset.libid)
+    .filter((id) => !(id in state.libMeta));
+  if (!missing.length) return;
+  const res = await fetch("/api/library/probe", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paths: missing.map((id) => id.slice(4)) }),
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+  for (const [p, v] of Object.entries(data)) state.libMeta[`lib:${p}`] = v;
+}
+
+async function applySort() {
+  const mode = $("sort-mode").value;
+  if (mode === "upload") {
+    state.uploads.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    renderFiles();
+    return;
+  }
+  // metadata-based sorts need library tags first (uploads carry probe info)
+  await ensureLibMeta();
+  const withMeta = new Map(state.uploads.map((u) => [u.id, {
+    ...uploadMeta(u),
+    ...(u.id.startsWith("lib:") ? (state.libMeta[u.id] || {}) : {}),
+    name: u.name, size: u.size, mtime: u.lastModified || 0,
+  }]));
+  const keyed = state.uploads.map((u, i) => ({ u, m: withMeta.get(u.id), i }));
+  keyed.sort((x, y) => {
+    let d = 0;
+    if (mode === "name") d = naturalCompare(x.u.name, y.u.name);
+    else if (mode === "size") d = x.u.size - y.u.size;
+    else if (mode === "mtime") d = (x.m.mtime || 0) - (y.m.mtime || 0);
+    else if (mode === "track") {
+      const xt = x.m.track, yt = y.m.track;
+      if (xt == null && yt == null) d = naturalCompare(x.u.name, y.u.name);
+      else if (xt == null) return 1;          // missing track goes last
+      else if (yt == null) return -1;
+      else d = xt - yt;
+    } else if (mode === "title") {
+      const xt = (x.m.title || "").trim(), yt = (y.m.title || "").trim();
+      if (!xt && !yt) d = naturalCompare(x.u.name, y.u.name);
+      else if (!xt) return 1;
+      else if (!yt) return -1;
+      else d = xt.localeCompare(yt);
+    }
+    return d || (x.i - y.i);   // stable tie-break = previous order
+  });
+  state.uploads = keyed.map((k) => k.u);
+  renderFiles();
 }
 
 /* ============ library browser ============ */
@@ -340,6 +457,13 @@ async function startConversion() {
   const mergeOn = $("merge-on").checked;
   if (mergeOn && sources.length < 2) { alert("合并模式至少需要 2 个文件"); return; }
 
+  const titleSource = $("title-source").value;
+  const titlePattern = $("title-pattern").value.trim();
+  if (titleSource === "pattern" && !titlePattern) {
+    alert("标题来源为 pattern 时必须填写 pattern（如：第${TrackNum:3}集）");
+    return;
+  }
+
   let coverId = null;
   const coverFile = $("merge-cover").files[0];
   if (mergeOn && coverFile) {
@@ -356,6 +480,8 @@ async function startConversion() {
     settings: currentSettings(),
     metadata: currentMetadata(),
     normalize: $("normalize").checked,
+    title_source: titleSource,
+    title_pattern: titleSource === "pattern" ? titlePattern : null,
   };
 
   if (mergeOn) {
@@ -364,16 +490,29 @@ async function startConversion() {
       merge: {
         book_title: $("merge-title").value || null,
         book_artist: $("merge-artist").value || null,
+        composer: $("merge-composer").value || null,
         cover_upload_id: state.coverUploadId,
       },
     };
     if (!(await postJob(body)).ok) return;
   } else {
-    for (const sid of sources) {
-      const ok = await postJob({ ...base, mode: "single", source_ids: [sid] });
+    for (let i = 0; i < sources.length; i++) {
+      const ok = await postJob({
+        ...base, mode: "single", source_ids: [sources[i]],
+        position: i + 1, total: sources.length,
+      });
       if (!ok) return;
     }
   }
+}
+
+function currentMetadata() {
+  return {
+    title: $("title-source").value === "inherit" ? ($("meta-title").value || null) : null,
+    artist: $("meta-artist").value || null,
+    album: $("meta-album").value || null,
+    composer: $("meta-composer").value || null,
+  };
 }
 
 function currentSettings() {
@@ -413,14 +552,6 @@ function renderMergeHints() {
   $("err-codec").textContent = errs.codec || "";
   $("err-channels").textContent = errs.channels || "";
   return Object.keys(errs).length;
-}
-
-function currentMetadata() {
-  return {
-    title: $("meta-title").value || null,
-    artist: $("meta-artist").value || null,
-    album: $("meta-album").value || null,
-  };
 }
 
 /* ============ header actions ============ */
@@ -521,6 +652,12 @@ function wireSettings() {
   $("merge-on").onchange = (e) => {
     $("merge-fields").classList.toggle("hidden", !e.target.checked);
     updateMergeHint();
+  };
+  $("sort-mode").onchange = applySort;
+  $("title-source").onchange = (e) => {
+    $("title-pattern-row").classList.toggle("hidden", e.target.value !== "pattern");
+    $("meta-title").disabled = e.target.value !== "inherit";
+    $("meta-title").placeholder = e.target.value === "inherit" ? "" : "（该来源下不生效）";
   };
   $("btn-start").onclick = startConversion;
 }

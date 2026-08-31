@@ -16,6 +16,7 @@ def build_chapter_meta(
     titles: list[str],
     book_title: str | None = None,
     book_artist: str | None = None,
+    composer: str | None = None,
 ) -> str:
     """Build ffmetadata text with cumulative chapter times (ms)."""
     lines = [";FFMETADATA1"]
@@ -23,6 +24,8 @@ def build_chapter_meta(
         lines.append(f"title={_escape_ffmetadata(book_title)}")
     if book_artist:
         lines.append(f"artist={_escape_ffmetadata(book_artist)}")
+    if composer:
+        lines.append(f"composer={_escape_ffmetadata(composer)}")
     t = 0.0
     for d, title in zip(durations, titles):
         start_ms = round(t * 1000)
@@ -134,6 +137,7 @@ async def execute_merge(job: Job, mgr) -> None:
             durations, chapter_titles(sources),
             book_title=book.book_title if book else None,
             book_artist=book.book_artist if book else None,
+            composer=book.composer if book else None,
         ),
         encoding="utf-8",
     )

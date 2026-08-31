@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import tempfile
 import zipfile
@@ -8,18 +9,37 @@ from pathlib import Path
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 from . import config, encoders, library, probe, presets, uploads
 from .jobs import JobManager
 from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
 from .events import sse_endpoint
+from .transcoder import _raise_nofile
+
+
+class _SuccessOnlyFilter(logging.Filter):
+    """Silence 2xx/3xx access logs (noise for bulk uploads); keep errors."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            return record.args[4] >= 400
+        except Exception:
+            return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_SuccessOnlyFilter())
 
 jm = JobManager(max_concurrent=config.MAX_CONCURRENT_JOBS)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # raise fd soft limit -> hard limit so huge merges (thousands of inputs,
+    # one fd each) don't die with "Too many open files". Children inherit it.
+    # Done in-process because uvloop ignores preexec_fn in subprocess spawns.
+    _raise_nofile()
     config.ensure_dirs()
     encoders.reset_cache()
     jm.start_workers()
@@ -80,6 +100,27 @@ async def library_list(path: str = ""):
         raise HTTPException(404, str(e))
     except NotADirectoryError as e:
         raise HTTPException(400, str(e))
+
+
+class LibraryProbeRequest(BaseModel):
+    paths: list[str]
+
+
+@app.post("/api/library/probe")
+async def library_probe(req: LibraryProbeRequest):
+    """Batch-probe library files (title/track) for client-side metadata sorting."""
+    out = {}
+    for path in req.paths[: config.MAX_MERGE_FILES]:
+        p = Path(path)
+        if not library.is_allowed(p) or not p.is_file():
+            continue
+        try:
+            info = probe.probe(p)
+            tags = info.get("tags") or {}
+            out[str(p)] = {"title": tags.get("title"), "track": tags.get("track")}
+        except probe.ProbeError:
+            out[str(p)] = {"title": None, "track": None}
+    return out
 
 
 # ---------- presets / health ----------
@@ -203,6 +244,10 @@ async def create_job(req: JobCreate):
         metadata=req.metadata,
         normalize=req.normalize or bool(merge_opts and getattr(merge_opts, "normalize", False)),
         merge=merge_opts,
+        position=req.position,
+        total=req.total,
+        title_source=req.title_source,
+        title_pattern=req.title_pattern,
     )
     jm.add(job)
     return {"job_id": job.id}

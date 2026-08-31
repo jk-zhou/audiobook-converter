@@ -33,6 +33,19 @@
         <p class="hint">mp3 / m4a / m4b / aac / flac / ogg / opus / wav（文件夹会递归扫描音频）</p>
       </div>
       <div id="upload-progress"></div>
+      <div class="sortbar">
+        <label class="small">排序
+          <select id="sort-mode">
+            <option value="upload">上传顺序</option>
+            <option value="name">文件名自然排序</option>
+            <option value="track">Track #</option>
+            <option value="title">标题</option>
+            <option value="mtime">修改时间</option>
+            <option value="size">文件大小</option>
+          </select>
+        </label>
+        <span class="hint">拖动 ⠿ 手动调整；转换/合并按列表顺序，所见即所得</span>
+      </div>
       <ul id="file-list" class="filelist"></ul>
       <div class="file-actions">
         <button id="btn-clear-files" class="btn subtle">清空列表</button>
@@ -94,18 +107,31 @@
         把全部文件按顺序合并为一个 .m4b（采用下方编码设置，内嵌章节）
       </label>
       <div id="merge-fields" class="hidden">
-        <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
-        <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
-        <label class="field">封面 <input type="file" id="merge-cover" accept="image/jpeg,image/png"></label>
+      <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
+      <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
+      <label class="field">演播者 <input id="merge-composer" placeholder="可选，写入手 ©wrt"></label>
+      <label class="field">封面 <input type="file" id="merge-cover" accept="image/jpeg,image/png"></label>
         <p class="hint" id="merge-hint"></p>
       </div>
     </fieldset>
 
     <fieldset>
       <legend>元数据（留空 = 继承源文件）</legend>
+      <label class="field">标题来源
+        <select id="title-source">
+          <option value="inherit">继承源文件标题</option>
+          <option value="filename">源文件名（不含后缀）</option>
+          <option value="pattern">自定义 pattern</option>
+        </select>
+      </label>
+      <label class="field hidden" id="title-pattern-row">标题 pattern
+        <input id="title-pattern" placeholder="第${TrackNum:3}集">
+        <span class="hint">${TrackNum} = 章节号；${TrackNum:3} 补零到 3 位。源无 track 时用列表顺序。</span>
+      </label>
       <label class="field">标题 <input id="meta-title"></label>
       <label class="field">作者 <input id="meta-artist"></label>
       <label class="field">专辑 <input id="meta-album"></label>
+      <label class="field">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
     </fieldset>
 
     <button id="btn-start" class="btn primary">▶ 开始转换</button>

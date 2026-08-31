@@ -52,6 +52,7 @@ class MetadataEdit(BaseModel):
 class MergeOptions(BaseModel):
     book_title: str | None = None
     book_artist: str | None = None
+    composer: str | None = None
     cover_upload_id: str | None = None
 
 
@@ -79,6 +80,9 @@ class JobStatus(str, Enum):
 ACTIVE_STATUSES = {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.TAGGING, JobStatus.MERGING}
 
 
+TitleSource = Literal["inherit", "filename", "pattern"]
+
+
 class Job(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     mode: Literal["single", "merge"] = "single"
@@ -89,6 +93,11 @@ class Job(BaseModel):
     merge: MergeOptions | None = None
     metadata: MetadataEdit = Field(default_factory=MetadataEdit)
     normalize: bool = False
+    # WYSIWYG ordering + title/track fallback (single mode)
+    position: int | None = None          # 1-based index in the files panel
+    total: int | None = None             # panel file count
+    title_source: TitleSource = "inherit"
+    title_pattern: str | None = None     # e.g. "第${TrackNum}集"
     status: JobStatus = JobStatus.QUEUED
     progress: float = 0.0
     error: str | None = None
@@ -117,6 +126,10 @@ class JobCreate(BaseModel):
     metadata: MetadataEdit = Field(default_factory=MetadataEdit)
     normalize: bool = False
     merge: MergeOptions | None = None
+    position: int | None = None
+    total: int | None = None
+    title_source: TitleSource = "inherit"
+    title_pattern: str | None = None
 
 
 class Preset(BaseModel):

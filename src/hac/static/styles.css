@@ -59,6 +59,14 @@ legend { font-size: 12px; color: var(--dim); padding: 0 6px; }
 .filelist .del { cursor: pointer; color: var(--dim); border: 0; background: none; }
 .filelist .del:hover { color: #ff8d86; }
 
+.sortbar { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; flex-wrap: wrap; }
+.sortbar select { padding: 4px 6px; background: var(--panel2); border: 1px solid var(--border);
+                  border-radius: 6px; color: var(--text); font-size: 12px; }
+.filelist li[draggable="true"] { cursor: grab; }
+.filelist li.dragging { opacity: .4; outline: 1px dashed var(--accent); }
+.filelist li .handle { color: var(--dim); cursor: grab; user-select: none; }
+.filelist li .pos { color: var(--accent); font-size: 11px; min-width: 26px; text-align: right; }
+
 .joblist li { background: var(--panel2); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
 .job-top { display: flex; align-items: center; gap: 8px; }
 .job-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

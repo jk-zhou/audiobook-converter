@@ -1,4 +1,5 @@
 import asyncio
+import re
 import signal
 from pathlib import Path
 
@@ -6,6 +7,73 @@ from . import config, metadata, probe
 from .models import COVER_CAPABLE, COVER_REENCODE, DEFAULT_CODEC, Job, JobStatus, TranscodeSettings
 
 LOUDNORM = "loudnorm=I=-20:TP=-3:LRA=11"
+
+try:
+    import resource
+
+    def _raise_nofile() -> None:
+        """Lift the fd soft limit to the hard limit for the ffmpeg child.
+
+        A 3000-input merge opens one fd per input; the inherited soft limit
+        (often 1024) makes ffmpeg die with "Too many open files" (#1000-ish).
+        """
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+except ImportError:  # non-POSIX
+    def _raise_nofile() -> None:
+        pass
+
+
+_TRACK_RE = re.compile(r"(\d+)")
+
+
+def parse_track_number(raw) -> int | None:
+    """'3' / '3/12' / ['3/12'] -> 3; None if absent."""
+    if raw is None:
+        return None
+    if isinstance(raw, (list, tuple)):
+        raw = raw[0] if raw else None
+    m = _TRACK_RE.search(str(raw))
+    return int(m.group(1)) if m else None
+
+
+def render_title_pattern(pattern: str, tracknum: int | None) -> str:
+    """'第${TrackNum:3}集' -> '第001集'; unknown placeholders stay literal."""
+    def repl(m):
+        pad = m.group(1)
+        if tracknum is None:
+            return ""
+        return f"{tracknum:0{int(pad)}d}" if pad else str(tracknum)
+
+    return re.sub(r"\$\{TrackNum(?::(\d+))?\}", repl, pattern)
+
+
+def resolve_title_and_track(job: Job, src: Path) -> tuple[str | None, tuple[int, int] | None]:
+    """Title/track per the UI's title-source option + order fallback.
+
+    Returns (title_override, track_pair); overrides are applied on top of
+    the inherited source tags during the tagging phase.
+    """
+    if job.title_source == "inherit" and job.position is None:
+        return None, None
+    try:
+        tags = metadata.read_source_tags(src)
+    except Exception:
+        tags = {}
+    src_track = parse_track_number(tags.get("tracknumber"))
+
+    title = None
+    if job.title_source == "filename":
+        title = src.stem
+    elif job.title_source == "pattern" and job.title_pattern:
+        title = render_title_pattern(job.title_pattern, src_track if src_track else job.position)
+
+    track = None
+    if src_track is None and job.position:
+        total = job.total or 0
+        track = (job.position, total) if total else (job.position, 0)
+    return title, track
 
 
 def resolve_codec(s: TranscodeSettings) -> str:
@@ -108,6 +176,7 @@ async def run_ffmpeg(args: list[str], register_proc=None, on_progress=None) -> t
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        preexec_fn=_raise_nofile,
     )
     if register_proc:
         register_proc(proc)
@@ -184,7 +253,13 @@ async def execute_single(job: Job, mgr) -> None:
 
     mgr.set_status(job.id, JobStatus.TAGGING)
     try:
-        metadata.write_tags(work_dst, job.metadata)
+        eff = job.metadata.model_copy()
+        title, track = resolve_title_and_track(job, src)
+        if title is not None:
+            eff.title = title
+        if track is not None:
+            eff.track = track
+        metadata.write_tags(work_dst, eff)
     except Exception as e:
         mgr.set_status(job.id, JobStatus.FAILED, error=f"metadata write: {e}")
         return

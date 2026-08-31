@@ -86,6 +86,15 @@ ffprobe -show_format out.m4b | grep -E "title|artist"
 - [ ] 目标 I=-20 LUFS，实测在 ±2 LU 内；不开 loudnorm 的对照组则无此约束
 - [ ] 任务进度条仍正常（filter 链不影响进度解析）
 
+### Test F2b：WYSIWYG 排序 / 标题来源 / track 回填 / 演播者（2026-08-30 新增）
+- [ ] 文件栏排序下拉：上传顺序 / 文件名自然排序（第2集 < 第10集）/ Track# / 标题 / 修改时间 / 大小；排序后列表即最终合并顺序（所见即所得）
+- [ ] 列表项可拖拽 ⠿ 手动调序
+- [ ] 元数据"标题来源"：继承 / 文件名 / pattern（`第${TrackNum:3}集` → `第002集`）
+- [ ] 源文件无 track number 时，单文件输出自动写入列表顺序为 track（`2/2`）
+- [ ] "演播者"(composer) 出现在 合并框 与 元数据 栏；合并产物 ffprobe `composer=` 有值（MP4 ©wrt）
+- [ ] 300 输入合并（服务 fd 软限 200）成功 —— 启动时自动提升 fd 软限到硬限（uvloop 忽略 preexec_fn，必须在父进程提升）
+- [ ] 访问日志只记 4xx/5xx（2xx/3xx 降噪）
+
 ### Test F3：本地目录导入
 - [ ] `GET /api/library/roots` 返回白名单根
 - [ ] 浏览 `HAC_LIBRARY_ROOTS` 内目录 → 列出 dirs/音频文件
