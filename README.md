@@ -130,6 +130,21 @@ docker compose up -d
 
 ---
 
+## 开发与测试
+
+```bash
+./run.sh setup            # 初始化依赖 + ffmpeg
+uv run pytest             # 单元测试（57 个，秒级）
+./scripts/run-e2e.sh      # 浏览器 E2E 全套（52 项，自动起停隔离服务）
+./scripts/run-e2e.sh part3  # 只跑某一部分
+```
+
+- 单元测试：`tests/`（参数构造/进度解析/合并章节/清理保护/元数据/白名单/任务管理…）
+- 浏览器 E2E：`tests/e2e/`（Playwright 用户视角走查；part1 转码主流程、part2 合并+各新功能、part3 UI/会话/清理）
+- E2E 自动使用**隔离数据目录**，不碰真实 `data/`；截图输出在 `data/e2e-shots/`
+
+---
+
 ## 当前状态
 
 🟢 **v0.2 已实现**（feat/mvp-improved 分支）：FastAPI 后端 + Vanilla JS 前端 + 测试 + Docker。

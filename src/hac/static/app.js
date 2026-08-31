@@ -442,9 +442,14 @@ function renderFiles() {
       e.stopPropagation();
       const from = parseInt(e.dataTransfer.getData("text/plain"));
       if (isNaN(from) || from === i) return;
-      const [moved] = state.uploads.splice(from, 1);
-      state.uploads.splice(i, 0, moved);
-      if (state.sort.key) state.sort = { key: null, dir: 1 };  // manual order wins
+      const arr = state.uploads.slice();
+      const [moved] = arr.splice(from, 1);
+      arr.splice(Math.min(i, arr.length), 0, moved);
+      // dedupe + reindex: the manual sequence becomes the new WYSIWYG baseline
+      // (otherwise renderFiles' order-sort would undo the move)
+      state.uploads = [...new Map(arr.map((u) => [u.id, u])).values()];
+      state.uploads.forEach((u, idx) => { u.order = idx; });
+      if (state.sort.key) state.sort = { key: null, dir: 1 };
       $("btn-sort-reset").classList.add("hidden");
       renderFiles();
       saveSession();
