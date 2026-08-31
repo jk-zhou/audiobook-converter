@@ -174,4 +174,11 @@ uv run pytest             # 单元测试（57 个，秒级）
 > 首次运行会自动创建虚拟环境并安装依赖；ffmpeg 缺失时 `./run.sh setup` 自动下载。
 > 应用启动时自动探测编码器：有 libfdk_aac → 6 预设全开；无 → HE-AAC 两档自动隐藏，其余照常。
 
-下一步：按 `docs/04-verification.md` 在浏览器逐项验收。
+**验收状态**：pytest 60/60 · 浏览器 E2E 74 项全绿（Part1 12 + Part2 26 + Part3 19 + Part4 17）
+· 300 文件分块合并、258 个真实有声书章节合并、loudnorm -20 LUFS 实测通过。
+
+**未完成事项**：
+- ⏳ Docker 镜像实测（Dockerfile/compose 已交付，本机未跑 D1-D7 验收）
+- ⏳ NAS/远程真机部署验证（局域网多设备访问、防火墙端口）
+- ⏳ v0.2 模板批处理（规格草案见 `docs/05-v0.2-spec-draft.md`）
+- ⏳ v0.3 播放器 + SQLite 持久化（重启后任务历史，见 roadmap）
