@@ -1,6 +1,7 @@
 """E2E Part 2 — M4B merge (chapters/cover/composer/HE params), loudnorm,
 per-param hints, folder upload, library import + 403, cancel/retry/clear."""
 import json
+import os
 import subprocess
 import time
 
@@ -219,6 +220,56 @@ def main():
            bool(js) and all(j.get("output_deleted_at") for j in js),
            str([(j["id"], bool(j.get("output_deleted_at"))) for j in js]))
         pg.screenshot(path=str(SHOTS / "08-cleared.png"))
+
+        # ===== F8: 批量重命名 + 写 tag =====
+        import subprocess as _sp
+        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=500:duration=0.3", "-c:a", "libmp3lame",
+                 "/tmp/hac-e2e/1 风起·萧鼎.mp3"], check=True)
+        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=600:duration=0.3", "-c:a", "libmp3lame",
+                 "/tmp/hac-e2e/2 云涌·萧鼎.mp3"], check=True)
+        pg.click('.tab[data-tab="uploads"]')
+        pg.set_input_files("#file-input",
+                           ["/tmp/hac-e2e/1 风起·萧鼎.mp3", "/tmp/hac-e2e/2 云涌·萧鼎.mp3"])
+        pg.wait_for_function(
+            "(state.uploadsAllRaw||[]).some(u=>u.name.includes('风起'))",
+            timeout=30000)
+        pg.evaluate("""() => {
+          document.querySelectorAll('#uploads-list input.up-pick').forEach(cb => {
+            const u = (state.uploadsAllRaw||[]).find(x=>x.id===cb.dataset.upid);
+            cb.checked = !!(u && /风起|云涌/.test(u.name));
+            cb.dispatchEvent(new Event("change"));
+          });
+        }""")
+        pg.click("#btn-batch")
+        pg.wait_for_selector("#batch-drawer:not(.hidden)")
+        pg.fill("#batch-template", "${TrackNum:3} ${TrackTitle}·${Artist}")
+        pg.check("#batch-writetags")
+        pg.wait_for_timeout(800)   # 预览
+        rows = pg.evaluate("""[...document.querySelectorAll('#batch-preview tr')]
+                           .map(tr => ({cls: tr.className,
+                                        txt: tr.textContent.slice(0, 120)}))""" )
+        ok("F8: 预览两行 ok", rows and all("bad" not in r for r in rows), str(rows))
+        pg.click("#batch-run")
+        pg.wait_for_timeout(1200)
+        rep = pg.evaluate("document.getElementById('batch-report').textContent")
+        ok("F8: 执行报告", "成功 2" in rep, rep)
+        names = pg.evaluate("(state.uploadsAllRaw||[]).map(u=>u.name)")
+        ok("F8: 注册表重命名", "001 风起·萧鼎.mp3" in names and "002 云涌·萧鼎.mp3" in names,
+           str(names))
+        # ffprobe 回读 tag
+        import glob as _glob
+        _f = _glob.glob(os.path.join(os.environ["E2E_DATA"], "uploads",
+                                     "*_001 风起·萧鼎.mp3"))
+        ok("F8: 重命名文件落盘", bool(_f), str(_f))
+        hd = ffprobe(_f[0])
+        tg = hd["format"].get("tags", {})
+        ok("F8: tag 写入（artist/track）",
+           tg.get("artist") == "萧鼎" and tg.get("track", "").startswith("1/"),
+           str(tg))
+
+        pg.click("#batch-close")
 
         b.close()
 

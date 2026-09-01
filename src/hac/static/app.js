@@ -93,6 +93,7 @@ function buildSessionPayload() {
     metaComposer: $("meta-composer").value,
     titleSource: $("title-source").value,
     titlePattern: $("title-pattern").value,
+    outputPattern: $("output-pattern").value,
     sort: state.sort,
     columns: state.columns,
     workingSet,
@@ -191,6 +192,7 @@ function applySession(s) {
     $("meta-title").disabled = s.titleSource !== "inherit";
   }
   setv("title-pattern", s.titlePattern);
+  setv("output-pattern", s.outputPattern);
   if (s.sort) state.sort = s.sort;
   if (s.columns) state.columns = { ...state.columns, ...s.columns };
   state.sessionWorkingSet = Array.isArray(s.workingSet) ? s.workingSet
@@ -317,6 +319,8 @@ async function uploadFiles(fileList) {
       xhr.send(fd);
     });
   }
+  // 已上传列表若已打开/打开过，刷新注册表视图
+  refreshUploadsLibrary();
 }
 
 function readEntriesAll(reader) {
@@ -979,8 +983,8 @@ async function batchPreview() {
     const cls = row.status === "ok" ? "" : "bad";
     const fieldsTxt = Object.entries(row.fields || {})
       .map(([k, v]) => `${k}=${v}`).join(" · ") || "—";
-    tb.insertAdjacentHTML("beforeend", `<tr>` +
-      `<td class="${cls}" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>` +
+    tb.insertAdjacentHTML("beforeend", `<tr class="${cls}">` +
+      `<td title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>` +
       `<td class="fields-cell">${escapeHtml(fieldsTxt)}` +
       (row.status !== "ok" ? ` <b>✗ ${escapeHtml(row.reason || row.status)}</b>` : "") +
       `</td>` +
@@ -1516,6 +1520,7 @@ async function startConversion() {
     normalize: $("normalize").checked,
     title_source: titleSource,
     title_pattern: titleSource === "pattern" ? titlePattern : null,
+    output_pattern: mergeOn ? null : ($("output-pattern").value.trim() || null),
   };
 
   if (mergeOn) {
@@ -1625,7 +1630,7 @@ function wireSettings() {
   // text inputs: save on every keystroke (debounced) so a crash/refresh
   // never loses what the user typed
   ["merge-title", "merge-artist", "merge-composer", "meta-title", "meta-artist",
-   "meta-album", "meta-composer", "title-pattern"].forEach((id) => {
+   "meta-album", "meta-composer", "title-pattern", "output-pattern"].forEach((id) => {
     $(id).addEventListener("input", saveSession);
     $(id).addEventListener("change", saveSession);
   });

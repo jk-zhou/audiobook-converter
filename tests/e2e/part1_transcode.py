@@ -97,6 +97,30 @@ def main():
             names = z.namelist()
         ok("zip download valid", len(names) == len(done_jobs(pg)),
            f"{len(names)} entries")
+        # ===== 模板标题（全字段渲染）=====
+        pg.fill("#meta-artist", "")
+        pg.select_option("#title-source", "pattern")
+        pg.fill("#title-pattern", "${TrackNum:3} ${TrackTitle}")
+        import json as _json
+        _up = _json.loads(pg.request.get(f"{BASE}/api/uploads").text())
+        _upid = _up[0]["id"]
+        _pos = 1
+        _body = {"mode": "single", "source_ids": [_upid],
+                 "preset_id": "audiobook_opus_32k",
+                 "title_source": "pattern",
+                 "title_pattern": "${TrackNum:3} ${TrackTitle}",
+                 "position": _pos, "total": 1}
+        _r = pg.request.post(f"{BASE}/api/jobs", data=_json.dumps(_body),
+                             headers={"Content-Type": "application/json"})
+        ok("模板标题任务创建", _r.status == 200, _r.text()[:80])
+        _jid = _json.loads(_r.text())["job_id"]
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>j.id==='%s' && j.status==='done')"
+            % _jid, timeout=180000)
+        _j = _json.loads(pg.request.get(f"{BASE}/api/jobs/{_jid}").text())
+        # 源文件无标题 tag → 标题渲染失败保留继承（模板渲染 None 行为）
+        ok("模板标题任务完成", _j["status"] == "done", _j["status"])
+
         b.close()
 
 

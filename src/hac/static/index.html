@@ -185,6 +185,10 @@
           <input id="title-pattern" placeholder="第${TrackNum:3}集">
           <span class="hint">${TrackNum} = 章节号；${TrackNum:3} 补零。源无 track 时用列表顺序。</span>
         </label>
+        <label class="field">输出文件名模板
+          <input id="output-pattern" placeholder="留空 = 保持默认；如：第${TrackNum:3}集">
+          <span class="hint">仅逐文件模式生效；字段同标题模板（${TrackNum} ${TrackTitle} ${Artist}…）</span>
+        </label>
         <label class="field meta-dup">标题 <input id="meta-title"></label>
         <label class="field meta-dup">作者 <input id="meta-artist"></label>
         <label class="field meta-dup">专辑 <input id="meta-album"></label>

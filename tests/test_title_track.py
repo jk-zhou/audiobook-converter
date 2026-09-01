@@ -20,8 +20,15 @@ def test_render_title_pattern():
     assert render_title_pattern("第${TrackNum}集", 5) == "第5集"
     assert render_title_pattern("第${TrackNum:3}集", 5) == "第005集"
     assert render_title_pattern("第${TrackNum:3}集", 1234) == "第1234集"
-    assert render_title_pattern("Ch ${TrackNum}", None) == "Ch "
+    # 必填字段缺失 → None（调用方保留继承标题），不再渲染残句
+    assert render_title_pattern("Ch ${TrackNum}", None) is None
     assert render_title_pattern("plain", 1) == "plain"
+
+
+def test_render_title_pattern_with_tags():
+    tags = {"title": "风起", "artist": "萧鼎"}
+    assert render_title_pattern("${TrackNum:2} ${TrackTitle}·${Artist}", 3,
+                                tags) == "03 风起·萧鼎"
 
 
 def _mk_source(tmp_path, name, with_track=True):

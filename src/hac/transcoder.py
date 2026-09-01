@@ -38,15 +38,28 @@ def parse_track_number(raw) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def render_title_pattern(pattern: str, tracknum: int | None) -> str:
-    """'第${TrackNum:3}集' -> '第001集'; unknown placeholders stay literal."""
-    def repl(m):
-        pad = m.group(1)
-        if tracknum is None:
-            return ""
-        return f"{tracknum:0{int(pad)}d}" if pad else str(tracknum)
+def render_title_pattern(pattern: str, tracknum: int | None,
+                         tags: dict | None = None) -> str | None:
+    """Full-template render for title overrides.
 
-    return re.sub(r"\$\{TrackNum(?::(\d+))?\}", repl, pattern)
+    fields: TrackNum(+position fallback), TrackTitle/Artist/Album/Year/
+    Genre/DiscNum/Composer from source tags. Render failure -> None
+    (caller keeps inherited title)."""
+    from .template import render, TemplateError
+    fields = {}
+    tags = tags or {}
+    if tracknum is not None:
+        fields["TrackNum"] = tracknum
+    tag_map = {"title": "TrackTitle", "artist": "Artist", "album": "Album",
+               "date": "Year", "genre": "Genre", "discnumber": "DiscNum",
+               "composer": "Composer"}
+    for tk, fk in tag_map.items():
+        if tags.get(tk) is not None:
+            fields[fk] = tags[tk]
+    try:
+        return render(pattern, fields)
+    except TemplateError:
+        return None
 
 
 def resolve_title_and_track(job: Job, src: Path) -> tuple[str | None, tuple[int, int] | None]:
@@ -69,7 +82,9 @@ def resolve_title_and_track(job: Job, src: Path) -> tuple[str | None, tuple[int,
         sid = job.source_ids[0] if job.source_ids else None
         title = (sid and uploads.display_stem(sid)) or src.stem
     elif job.title_source == "pattern" and job.title_pattern:
-        title = render_title_pattern(job.title_pattern, src_track if src_track else job.position)
+        title = render_title_pattern(job.title_pattern,
+                                     src_track if src_track else job.position,
+                                     tags)
 
     track = None
     if src_track is None and job.position:

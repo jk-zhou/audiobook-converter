@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import batch as batch_mod
 from . import config, encoders, library, probe, presets, uploads
+from . import template as template_mod
 from .jobs import JobManager
 from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
 from .events import sse_endpoint
@@ -323,12 +324,37 @@ async def create_job(req: JobCreate):
         from . import uploads as _up
         source_names.append(Path(_up.display_stem(sid) or path.stem).name)
 
+    output_filename = req.output_filename or _default_output_name(req, paths)
+    if req.mode == "single" and req.output_pattern:
+        errs = template_mod.validate_template(req.output_pattern)
+        if errs:
+            raise HTTPException(400, f"输出文件名模板错误：{errs[0]}")
+        try:
+            u = uploads.get(req.source_ids[0])
+            tags = (u.info or {}).get("tags") or {} if u else {}
+            tag_map = {"title": "TrackTitle", "artist": "Artist",
+                       "album": "Album", "date": "Year", "genre": "Genre",
+                       "discnumber": "DiscNum", "composer": "Composer"}
+            fields = {}
+            for tk, fk in tag_map.items():
+                v = tags.get(tk)
+                if v is not None:
+                    fields[fk] = v
+            if req.position:
+                fields["TrackNum"] = req.position
+            from .template import TemplateError
+            stem = template_mod.render(req.output_pattern, fields)
+        except TemplateError as e:
+            raise HTTPException(400, f"输出文件名模板错误：{e}")
+        ext = output_filename.rsplit(".", 1)[-1]
+        output_filename = f"{stem}.{ext}"
+
     job = Job(
         mode=req.mode,
         source_ids=req.source_ids,
         source_paths=paths,
         source_names=source_names,
-        output_filename=req.output_filename or _default_output_name(req, paths),
+        output_filename=output_filename,
         settings=settings,
         metadata=req.metadata,
         normalize=req.normalize or bool(merge_opts and getattr(merge_opts, "normalize", False)),

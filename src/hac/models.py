@@ -126,6 +126,7 @@ class JobCreate(BaseModel):
     preset_id: str | None = None
     settings: TranscodeSettings | None = None
     output_filename: str | None = None
+    output_pattern: str | None = None    # 输出文件名模板（仅 single）
     metadata: MetadataEdit = Field(default_factory=MetadataEdit)
     normalize: bool = False
     merge: MergeOptions | None = None
