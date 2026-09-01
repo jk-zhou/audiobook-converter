@@ -609,3 +609,41 @@ ${TrackNum:3} → TRCK = "001/2452"
 - 用户期望"重命名 = 直接生效"，避免中间目录污染
 - 强制预览确保用户看清每个新文件名再下手
 - 可选 `.bak` 备份降低误操作风险
+
+---
+
+## 7. 设计系统（v0.2 UI 改版）
+
+> 2026-08 全面改版落地：左主工作区 + 右侧栏布局、design token 体系、SVG 图标、渐进披露表单、可访问性补齐。
+
+### 7.1 Design Tokens（styles.css `:root`）
+
+| 类别 | Token | 值 |
+|---|---|---|
+| 表面 | `--bg / --panel / --panel2 / --panel3` | `#0b0d12 / #14171e / #1c202a / #232834`（页底<面板<控件<hover 四层深度） |
+| 文字 | `--text / --text2 / --dim` | `#e8ebf1 / #a8b0bf / #7d8594`（正文对比度 ≥4.5:1） |
+| 语义 | `--accent --ok --warn --err` + `-soft` 半透明底 | 蓝 `#4f8cff`、绿 `#3ecf7a`、橙 `#e6a23c`、红 `#f2635b` |
+| 圆角 | `--radius-s / --radius / --radius-l` | 6 / 10 / 14 px |
+| 间距 | `--s1…--s6` | 4 / 8 / 12 / 16 / 24 / 32（4-8px 节奏） |
+| 字号 | `--fs-xs…--fs-xl` | 12 / 13 / 14 / 16 / 20 |
+| 焦点 | `--focus-ring` | 双层 box-shadow，全站 `:focus-visible` |
+
+### 7.2 布局
+
+- `>1100px`：grid 双栏 `minmax(0,1fr) + 380px`；右侧栏 sticky、内部滚动，「开始转换」sticky 于侧栏底部
+- `≤1360px`：侧栏收窄 340px
+- `≤1100px`：单列，设置|任务并排；CTA 取消 sticky
+- `≤768px`：全单列，主按钮 48px 触控高度
+
+### 7.3 图标
+
+Inline SVG sprite（`index.html` 顶部 `<symbol>`，stroke 1.5px / 24 viewBox / currentColor）：
+`i-upload i-folder i-library i-trash i-download i-play i-x i-check i-alert i-chevron-down i-grip i-arrow-up i-arrow-down i-music`
+JS 侧统一经 `icon(name)` helper 引用；装饰性图标一律 `aria-hidden="true"`。零 CDN、零外部字体依赖。
+
+### 7.4 交互与可访问性
+
+- 拖拽排序保留，同时每行 hover/focus 显示 ↑↓ 按钮（WCAG 2.2 AA 拖拽替代）
+- 列头 `aria-sort`；任务/上传进度 `aria-live="polite"`；错误 `role="alert"`；toast `role="status"`
+- 触控目标 ≥44px（主 CTA 48px@移动端）；`prefers-reduced-motion` 全局降级
+- 表格空元数据列自动隐藏（与「列 ▾」手动设置取与）
