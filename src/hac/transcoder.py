@@ -281,7 +281,8 @@ def _finish_with_verify(job: Job, mgr) -> None:
         v["source_size"] = source_size
         if source_size and v.get("output_size"):
             v["savings_pct"] = round((1 - v["output_size"] / source_size) * 100, 1)
-        job.verify = v
+        from .models import VerifyInfo
+        job.verify = VerifyInfo(**v)
     except Exception:
         pass
 

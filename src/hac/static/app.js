@@ -100,8 +100,10 @@ function buildSessionPayload() {
 }
 
 let _sessionDebounce = null;
+let _sessionDirty = false;
 function saveSession() {
   // server-first (multi-device consistent), localStorage as offline fallback
+  _sessionDirty = true;
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(buildSessionPayload())); }
   catch (e) { /* storage unavailable */ }
   clearTimeout(_sessionDebounce);
@@ -114,6 +116,10 @@ function saveSession() {
 }
 
 function flushSessionBeacon() {
+  // only flush when the user actually changed something this page life;
+  // a blind flush would clobber the server session with pristine defaults
+  if (!_sessionDirty) return;
+  _sessionDirty = false;
   try {
     navigator.sendBeacon("/api/session-beacon",
       new Blob([JSON.stringify(buildSessionPayload())],
@@ -142,14 +148,18 @@ async function restoreSessionFromServer() {
 }
 
 async function migrateLocalSession() {
-  // one-time: push old localStorage session to server, then clear local copy
+  // one-time: push old localStorage session to server, apply it, then refresh
+  // the local fallback copy from the imported state
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return;
     const r = await fetch("/api/settings/import", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: raw,
     });
-    if (r.ok) localStorage.removeItem(SESSION_KEY);
+    if (r.ok) {
+      applySession(JSON.parse(raw));   // UI 必须反映导入值，防默认值覆盖
+      localStorage.setItem(SESSION_KEY, raw);  // 与服务端一致（saveSession 也会刷新）
+    }
   } catch (e) { /* server unreachable */ }
 }
 

@@ -69,8 +69,8 @@ def test_single_opus_transcodes(sources_dir, mgr):
     # Ogg/Opus containers always report 48kHz (RFC 7845); internal coding rate
     # follows -ar 24000. ffprobe stream sample_rate is fixed at 48000.
     assert int(st["sample_rate"]) == 48000
-    assert j.verify and j.verify["codec"] == "opus"
-    assert j.verify["savings_pct"] and j.verify["savings_pct"] > 0
+    assert j.verify and j.verify.codec == "opus"
+    assert j.verify.savings_pct and j.verify.savings_pct > 0
 
 
 def test_single_normalize_flag(sources_dir, mgr):

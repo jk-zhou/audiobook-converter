@@ -23,8 +23,9 @@ class JobManager:
     def _persist(self, job: Job) -> None:
         try:
             db.save_job(job)
-        except Exception:
-            pass  # DB failure must never break the running transcode
+        except Exception as e:  # DB failure must never break the running transcode
+            import sys
+            print(f"PERSIST FAIL {job.id} {job.status}: {e!r}", file=sys.stderr, flush=True)
 
     def restore_from_db(self) -> int:
         """Load full history from DB into memory; active -> interrupted."""

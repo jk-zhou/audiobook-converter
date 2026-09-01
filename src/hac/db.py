@@ -164,12 +164,23 @@ def mark_output_deleted(job_id: str) -> None:
 
 
 def _dump(model) -> str | None:
-    return None if model is None else json.dumps(
-        model.model_dump(mode="json"), ensure_ascii=False)
+    if model is None:
+        return None
+    if isinstance(model, dict):
+        return json.dumps(model, ensure_ascii=False)
+    return json.dumps(model.model_dump(mode="json"), ensure_ascii=False)
 
 
 def _load(cls, raw):
     return None if raw is None else cls(**json.loads(raw))
+
+
+def _verify_output_size(verify) -> int | None:
+    if verify is None:
+        return None
+    if isinstance(verify, dict):
+        return verify.get("output_size")
+    return verify.output_size
 
 
 def job_to_record(job: Job) -> JobRecord:
@@ -187,7 +198,7 @@ def job_to_record(job: Job) -> JobRecord:
         source_names_json=json.dumps(job.source_names, ensure_ascii=False),
         output_filename=job.output_filename,
         output_path=str(job.output_path) if job.output_path else None,
-        output_size=(job.verify.output_size if job.verify else None),
+        output_size=_verify_output_size(job.verify),
         verify_json=_dump(job.verify),
         error=job.error,
         progress=job.progress,

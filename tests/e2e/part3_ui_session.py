@@ -2,7 +2,7 @@
 auto-cleanup after job, app icon."""
 import time
 
-from common import BASE, SHOTS, ok, report
+from common import BASE, SHOTS, ok, report, restart_server
 from playwright.sync_api import sync_playwright
 
 
@@ -12,6 +12,26 @@ def main():
         pg = b.new_page(viewport={"width": 1440, "height": 950})
         pg.goto(BASE)
         pg.wait_for_selector("#health-badge.pill.ok", timeout=8000)
+
+        # F0: localStorage one-time migration to server session
+        pg.evaluate("""() => localStorage.setItem('hac.session.v1',
+          JSON.stringify({bitrate: '96k', columns: {mtime: true}}))""")
+        pg.reload()
+        pg.wait_for_selector("#health-badge.pill.ok", timeout=8000)
+        pg.wait_for_timeout(800)   # let restoreSessionFromServer finish
+        migrated = pg.evaluate("""async () => {
+          const r = await fetch('/api/session');
+          const s = r.ok ? await r.json() : null;
+          return {code: r.status, bitrate: s && s.bitrate,
+                  input: pg_input_bitrate()};
+          function pg_input_bitrate() {
+            return document.getElementById('bitrate').value;
+          }
+        }""")
+        ok("F0: localStorage 一次性迁移", migrated["code"] == 200
+           and migrated["bitrate"] == "96k" and migrated["input"] == "96k",
+           str(migrated))
+        pg.evaluate("() => { localStorage.clear(); state.columns.mtime = false; renderFiles(); }")   # 后续用例不受影响
 
         # F4: app icon
         ok("favicon referenced", pg.evaluate(
@@ -160,6 +180,32 @@ def main():
            pg.evaluate("state.uploadsAll.length") == 0,
            f"remaining={pg.evaluate('state.uploadsAll.length')}")
         pg.screenshot(path=str(SHOTS / "14-uploads-tab.png"))
+
+        # F7: 服务重启 → 任务历史与会话从 DB 恢复
+        pg.set_input_files("#file-input", ["/tmp/hac-e2e/ch1.mp3"])
+        pg.wait_for_function("state.uploads.length >= 1", timeout=30000)
+        pg.select_option("#preset", "audiobook_opus_48k")
+        pg.click("#btn-start")
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>j.status==='done')", timeout=180000)
+        pg.fill("#meta-artist", "重启恢复测试作者")
+        pg.evaluate("state.columns.album = true")
+        pg.evaluate("saveSession()")
+        pg.wait_for_timeout(800)   # 等防抖 PUT 落库
+
+        restart_server()
+        pg.reload()
+        pg.wait_for_selector("#health-badge.pill.ok", timeout=15000)
+        pg.wait_for_timeout(1200)
+        hist = pg.evaluate(
+            "Object.values(state.jobs).filter(j=>j.status==='done').length")
+        ok("F7: 重启后任务历史恢复", hist >= 1, f"done={hist}")
+        ok("F7: 重启后会话恢复（作者字段）",
+           pg.input_value("#meta-artist") == "重启恢复测试作者",
+           pg.input_value("#meta-artist"))
+        ok("F7: 重启后列设置恢复", pg.evaluate("state.columns.album") is True)
+        rows = pg.evaluate("[...document.querySelectorAll('#job-list li[data-job]')].length")
+        ok("F7: 历史任务卡片渲染", rows >= 1, f"rows={rows}")
 
         b.close()
 

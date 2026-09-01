@@ -88,3 +88,12 @@ def test_job_record_roundtrip(dbtmp):
 def test_list_job_records_all(dbtmp):
     db.save_job(_sample_job())
     assert len(db.list_job_records()) == 1
+
+
+def test_job_to_record_tolerates_dict_verify(dbtmp):
+    job = _sample_job()
+    job.verify = {"codec": "opus", "output_size": 999}   # transcoder 历史行为
+    db.save_job(job)
+    rec = db.get_job_record(job.id)
+    assert rec.verify_json is not None
+    assert rec.output_size == 999
