@@ -129,6 +129,9 @@ docker run -d \
 docker compose up -d
 ```
 
+**Unraid 7.x 用户**：使用内置 Compose Manager 一键部署（镜像内置 libfdk，
+HE-AAC 开箱即用），步骤见 [`docs/08-unraid-deploy.md`](docs/08-unraid-deploy.md)。
+
 详细设计见 [`docs/03-roadmap.md` §1.5](docs/03-roadmap.md)，
 验收测试见 [`docs/04-verification.md` §14](docs/04-verification.md)。
 
