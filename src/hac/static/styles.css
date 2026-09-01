@@ -555,3 +555,37 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 /* ---------- persistence UI (sub-project B) ---------- */
 .badge.cleaned { color: var(--dim); border-style: dashed; }
 .joblist li.load-more { background: none; border: none; text-align: center; padding: var(--s2); }
+
+/* ---------- Batch drawer (template batch) ---------- */
+.drawer {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(5, 6, 10, .55);
+  display: flex; justify-content: flex-end;
+}
+.drawer-panel {
+  width: min(720px, 92vw); height: 100%;
+  background: var(--panel); border-left: 1px solid var(--border-strong);
+  display: flex; flex-direction: column;
+  box-shadow: -12px 0 40px rgba(0, 0, 0, .5);
+}
+.drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border);
+}
+.drawer-head h3 { margin: 0; font-size: var(--fs-lg); }
+.drawer-body { padding: var(--s4); overflow-y: auto; flex: 1; }
+.batch-preview-wrap {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: auto; max-height: 40vh; margin-top: var(--s3);
+}
+.batch-actions { margin-top: var(--s3); display: flex; align-items: center; gap: var(--s3); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s1); margin: var(--s1) 0 var(--s3); }
+.chip {
+  padding: 3px 10px; font-size: var(--fs-xs); border-radius: 99px;
+  background: var(--panel2); border: 1px solid var(--border);
+  color: var(--text2); cursor: pointer;
+}
+.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent2); }
+.batch-preview-wrap td.bad { color: var(--err); }
+.batch-preview-wrap td.fields-cell { color: var(--text2); font-size: var(--fs-xs); }

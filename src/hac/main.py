@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from . import batch as batch_mod
 from . import config, encoders, library, probe, presets, uploads
 from .jobs import JobManager
 from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
@@ -388,6 +389,30 @@ async def delete_job_output(job_id: str):
         raise HTTPException(404, "job not found")
     jm.delete_output(job_id)
     return {"ok": True}
+
+
+# ---------- batch rename / tag-write ----------
+
+@app.post("/api/batch/preview")
+async def batch_preview(req: batch_mod.BatchRequest):
+    try:
+        results = batch_mod.preview_batch(
+            pool=req.pool, ids=req.ids, template=req.template,
+            filenames=req.filenames, total=req.track_total, job_manager=jm)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return results
+
+
+@app.post("/api/batch/execute")
+async def batch_execute(req: batch_mod.BatchRequest):
+    try:
+        return batch_mod.execute_batch(
+            pool=req.pool, ids=req.ids, template=req.template,
+            write_fields=req.write_fields, filenames=req.filenames,
+            total=req.track_total, job_manager=jm)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # ---------- settings & session (server-side persistence) ----------

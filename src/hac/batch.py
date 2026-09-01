@@ -20,17 +20,17 @@ class BatchRequest(BaseModel):
 
 
 def _locked(upload_id: str) -> bool:
+    """upload id 是否被活动任务引用（jobs 由 main 注入，避免循环导入）。"""
     from .models import ACTIVE_STATUSES
-    # main.py 持有 jobs 引用；循环导入防护：从注册状态判断
-    from .main import jm
+    try:
+        from .main import jm
+    except ImportError:          # 独立调用（单测直接注入 _locked）
+        return False
     job = jm.jobs.get(upload_id)
-    if job and job.status in ACTIVE:
+    if job and job.status in ACTIVE_STATUSES:
         return True
     return any(upload_id in j.source_ids for j in jm.jobs.values()
                if j.status in ACTIVE_STATUSES)
-
-
-from .models import ACTIVE_STATUSES  # noqa: E402  (after _locked uses it via closure)
 
 
 def _resolve_new_name(template: str, stem: str, ext: str) -> tuple[str, dict]:

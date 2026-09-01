@@ -825,6 +825,16 @@ function renderUploadsLibrary() {
       refreshUploadsLibrary();
     };
   });
+  tbody.querySelectorAll("input.up-pick").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const n = tbody.querySelectorAll("input.up-pick:checked").length;
+      const btn = $("btn-batch");
+      if (btn) btn.disabled = n === 0;
+    });
+  });
+  const n = tbody.querySelectorAll("input.up-pick:checked").length;
+  const btn = $("btn-batch");
+  if (btn) btn.disabled = n === 0;
 }
 
 function addToWorkingSet(id) {
@@ -882,6 +892,176 @@ function wireUploadsLibrary() {
     saveSession();
     toast(`已加入 ${added} 个文件到当前列表`);
   };
+}
+
+/* ============ 批量处理（模板重命名/写 tag） ============ */
+
+const BATCH_FIELDS = [
+  ["TrackNum", "编号"], ["TrackTitle", "标题"], ["Artist", "作者"],
+  ["Album", "专辑"], ["Year", "年份"], ["Genre", "流派"],
+  ["DiscNum", "盘号"], ["Composer", "演播者"],
+];
+const TAG_FIELD_MAP = {
+  title: "TrackTitle", artist: "Artist", album: "Album", track: "TrackNum",
+  year: "Year", genre: "Genre", disc: "DiscNum", composer: "Composer",
+};
+const batch = { pool: "uploads", ids: [], timer: null, lastPreview: null };
+
+function batchOpen(pool, ids) {
+  batch.pool = pool;
+  batch.ids = ids;
+  batch.lastPreview = null;
+  $("batch-pool-info").textContent =
+    pool === "uploads" ? `已选 ${ids.length} 个文件` : `产物 ${ids.length} 个`;
+  const drawer = $("batch-drawer");
+  drawer.classList.remove("hidden");
+  $("batch-template").value = "";
+  $("batch-tpl-err").textContent = "";
+  $("batch-preview").innerHTML = "";
+  $("batch-report").textContent = "";
+  $("batch-run").disabled = true;
+  $("batch-writetags").checked = false;
+  renderBatchTagChips();
+  $("batch-template").focus();
+}
+
+function batchClose() { $("batch-drawer").classList.add("hidden"); }
+
+function renderBatchTagChips() {
+  const wrap = $("batch-tagfields");
+  wrap.innerHTML = "";
+  wrap.style.display = $("batch-writetags").checked ? "flex" : "none";
+  for (const [key, label] of Object.entries(TAG_FIELD_MAP)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip on";
+    b.textContent = label;
+    b.dataset.key = key;
+    b.onclick = () => b.classList.toggle("on");
+    wrap.appendChild(b);
+  }
+}
+
+function batchSelectedTagFields() {
+  return [...document.querySelectorAll("#batch-tagfields .chip.on")]
+    .map((b) => b.dataset.key);
+}
+
+function batchSchedulePreview() {
+  clearTimeout(batch.timer);
+  batch.timer = setTimeout(batchPreview, 300);
+}
+
+async function batchPreview() {
+  const tpl = $("batch-template").value.trim();
+  const errEl = $("batch-tpl-err");
+  errEl.textContent = "";
+  $("batch-preview").innerHTML = "";
+  $("batch-run").disabled = true;
+  batch.lastPreview = null;
+  if (!tpl) return;
+  const r = await fetch("/api/batch/preview", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pool: batch.pool, ids: batch.ids, template: tpl,
+      filenames: batchFilenames(), track_total: batch.ids.length,
+    }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    errEl.textContent = d.detail || `HTTP ${r.status}`;
+    return;
+  }
+  const rows = await r.json();
+  batch.lastPreview = rows;
+  const tb = $("batch-preview");
+  for (const row of rows) {
+    const cls = row.status === "ok" ? "" : "bad";
+    const fieldsTxt = Object.entries(row.fields || {})
+      .map(([k, v]) => `${k}=${v}`).join(" · ") || "—";
+    tb.insertAdjacentHTML("beforeend", `<tr>` +
+      `<td class="${cls}" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>` +
+      `<td class="fields-cell">${escapeHtml(fieldsTxt)}` +
+      (row.status !== "ok" ? ` <b>✗ ${escapeHtml(row.reason || row.status)}</b>` : "") +
+      `</td>` +
+      `<td class="${cls}">${escapeHtml(row.new_name || "")}</td></tr>`);
+  }
+  const okN = rows.filter((r) => r.status === "ok").length;
+  $("batch-run").disabled = okN === 0;
+}
+
+function batchFilenames() {
+  if (batch.pool === "uploads") {
+    const m = {};
+    for (const uid of batch.ids) {
+      const u = (state.uploadsAll || state.uploadsAllRaw || [])
+        .find((x) => x.id === uid);
+      if (u) m[uid] = u.name;
+    }
+    return m;
+  }
+  const m = {};
+  for (const jid of batch.ids) {
+    const j = state.jobs[jid];
+    if (j) m[jid] = j.output_filename;
+  }
+  return m;
+}
+
+async function batchRun() {
+  const tpl = $("batch-template").value.trim();
+  const writeFields = $("batch-writetags").checked ? batchSelectedTagFields() : [];
+  const r = await fetch("/api/batch/execute", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pool: batch.pool, ids: batch.ids, template: tpl, write_fields: writeFields,
+      filenames: batchFilenames(), track_total: batch.ids.length,
+    }),
+  });
+  const d = await r.json().catch(() => ({}));
+  $("batch-report").textContent =
+    `完成：成功 ${d.ok || 0} · 跳过 ${d.skipped || 0} · 失败 ${d.failed || 0}`;
+  await batchPreview();
+  if (batch.pool === "uploads") refreshUploadsLibrary();
+  else renderJobs();
+}
+
+function wireBatch() {
+  $("btn-batch").onclick = () => {
+    const ids = [...document.querySelectorAll("#uploads-list input.up-pick:checked")]
+      .map((cb) => cb.dataset.upid)
+      .filter((id) => {
+        const u = (state.uploadsAll || []).find((x) => x.id === id);
+        return u && !(u.info && u.info.kind === "cover");
+      });
+    if (!ids.length) return;
+    batchOpen("uploads", ids);
+  };
+  $("batch-close").onclick = batchClose;
+  $("batch-drawer").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") batchClose();
+  });
+  $("batch-drawer").addEventListener("click", (e) => {
+    if (e.target === $("batch-drawer")) batchClose();
+  });
+  $("batch-template").addEventListener("input", batchSchedulePreview);
+  $("batch-writetags").addEventListener("change", renderBatchTagChips);
+  $("batch-run").onclick = batchRun;
+  // chips：点击插入 ${Field}
+  const chipWrap = $("batch-chips");
+  for (const [key, label] of BATCH_FIELDS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = label;
+    b.title = `\${${key}}`;
+    b.onclick = () => {
+      const inp = $("batch-template");
+      inp.value += `\${${key}}`;
+      inp.dispatchEvent(new Event("input"));
+    };
+    chipWrap.appendChild(b);
+  }
 }
 
 /* ============ toast ============ */
@@ -1171,6 +1351,8 @@ function jobCardHTML(j) {
   const acts = [];
   const cleaned = !!j.output_deleted_at;
   if (j.status === "done" && !cleaned) acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">${icon("download")} 下载</button>`);
+  if (j.status === "done" && !cleaned && j.mode === "single")
+    acts.push(`<button class="btn small subtle" data-act="batchout" data-id="${j.id}">${icon("settings")} 批量处理</button>`);
   if (j.status === "failed" || j.status === "cancelled")
     acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}">↻ 重试</button>`);
   if (ACTIVE.has(j.status))
@@ -1186,6 +1368,7 @@ function bindJobActions(scope) {
     b.onclick = async () => {
       const { act, id } = b.dataset;
       if (act === "dl") location.href = `/api/jobs/${id}/download`;
+      else if (act === "batchout") batchOpen("outputs", [id]);
       else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
       else if (act === "cancel") await fetch(`/api/jobs/${id}`, { method: "DELETE" });
       else if (act === "togglesrc") {
@@ -1501,6 +1684,7 @@ function init() {
   wireLibrary();
   wireUploadsLibrary();
   wireHeaderButtons();
+  wireBatch();
   connectSSE();
   restoreSessionFromServer();
   restoreWorkingSetFromSession();

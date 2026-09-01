@@ -93,6 +93,7 @@
         <button id="up-del-selected" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 删除所选</button>
         <button id="up-del-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 删除全部未使用</button>
         <button id="up-add-selected" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 加入列表</button>
+        <button id="btn-batch" class="btn small" disabled><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg> 批量处理</button>
         <span class="small dim" id="up-count"></span>
       </div>
       <div class="table-wrap uploads-wrap">
@@ -206,6 +207,35 @@
   </aside>
 </main>
 
+<div id="batch-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="batch-title">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <h3 id="batch-title">批量处理 <span class="small dim" id="batch-pool-info"></span></h3>
+      <button class="btn small subtle" id="batch-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="drawer-body">
+      <label class="field">文件名模板
+        <input id="batch-template" placeholder="如：${TrackNum:2} ${TrackTitle}·${Artist}">
+        <span class="hint" id="batch-tpl-err"></span>
+      </label>
+      <div class="chips" id="batch-chips" aria-label="插入字段">
+      </div>
+      <label class="field checkbox"><input type="checkbox" id="batch-writetags"> 同时写入音频标签（勾选下方字段）</label>
+      <div class="chips" id="batch-tagfields">
+      </div>
+      <div class="batch-preview-wrap">
+        <table class="filetable">
+          <thead><tr><th>原文件名</th><th>解析字段</th><th>新文件名</th></tr></thead>
+          <tbody id="batch-preview"></tbody>
+        </table>
+      </div>
+      <div class="batch-actions">
+        <button class="btn small" id="batch-run" disabled>执行重命名</button>
+        <span class="hint" id="batch-report"></span>
+      </div>
+    </div>
+  </div>
+</div>
 <script src="/static/app.js"></script>
 </body>
 </html>
