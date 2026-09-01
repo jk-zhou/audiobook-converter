@@ -28,7 +28,7 @@
 | `appdata/audiobook-converter/uploads/` | 上传的源文件（含注册表，重启自动恢复） |
 | `appdata/audiobook-converter/outputs/` | 转码产物（下载源） |
 | `appdata/audiobook-converter/library/` | 默认书库（不放书也可用 /books 只读挂载） |
-| `appdata/audiobook-converter/hac.db` | SQLite（设置/会话/任务历史，v0.3 起） |
+| `appdata/audiobook-converter/hac.db` | SQLite：设置/会话/任务历史（已落地，重启不丢） |
 | `appdata/audiobook-converter/logs/` | 运行日志（每日轮转 30 天） |
 
 ## 3. 权限说明（PUID/PGID）
