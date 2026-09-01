@@ -494,3 +494,13 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 @media (hover: none) {
   .filetable .mv, .filetable .del { opacity: 1; }
 }
+
+/* ---------- Job status strips (Task 6) ---------- */
+.joblist li { border-left: 3px solid var(--border); }
+.joblist li[data-status="running"],
+.joblist li[data-status="tagging"] { border-left-color: var(--accent); }
+.joblist li[data-status="merging"] { border-left-color: var(--warn); }
+.joblist li[data-status="done"] { border-left-color: var(--ok); }
+.joblist li[data-status="failed"] { border-left-color: var(--err); }
+.empty-jobs { padding: var(--s5) var(--s3); }
+.empty-jobs .ic { width: 24px; height: 24px; }

@@ -416,9 +416,12 @@ function renderFiles() {
 
   head.innerHTML = `<th class="nosort">#</th><th class="nosort"></th>` +
     vis.map((c) => {
-      let arrow = "";
-      if (state.sort.key === c.key) arrow = state.sort.dir === 1 ? " ▲" : " ▼";
-      return `<th data-key="${c.key}">${c.label}${arrow}</th>`;
+      let arrow = "", as = "";
+      if (state.sort.key === c.key) {
+        arrow = state.sort.dir === 1 ? " ▲" : " ▼";
+        as = ` aria-sort="${state.sort.dir === 1 ? "ascending" : "descending"}"`;
+      }
+      return `<th data-key="${c.key}"${as} aria-label="按${c.label}排序">${c.label}${arrow}</th>`;
     }).join("") + `<th class="nosort"></th>`;
 
   head.querySelectorAll("th[data-key]").forEach((th) => {
@@ -669,6 +672,7 @@ function toast(msg, ms = 3500) {
   if (!t) {
     t = document.createElement("div");
     t.id = "toast";
+    t.setAttribute("role", "status");
     document.body.appendChild(t);
   }
   t.textContent = msg;
@@ -865,7 +869,7 @@ function jobCardHTML(j) {
       (v.savings_pct != null ? ` · 体积省 <b>${v.savings_pct}%</b>（${fmtSize(v.output_size)} / 源 ${fmtSize(v.source_size)}）` : "") +
       `</div>`;
   }
-  if (j.error) html += `<div class="joberr">${icon("alert")} ${escapeHtml(j.error)}</div>`;
+  if (j.error) html += `<div class="joberr" role="alert">${icon("alert")} ${escapeHtml(j.error)}</div>`;
 
   // 源文件清单（默认折叠）+ 显式删除源文件
   const srcNames = (j.source_names && j.source_names.length)
@@ -889,7 +893,7 @@ function jobCardHTML(j) {
   if (ACTIVE.has(j.status))
     acts.push(`<button class="btn small subtle" data-act="cancel" data-id="${j.id}">${icon("x")} 取消</button>`);
   html += `<div class="job-actions">${acts.join("")}</div>`;
-  return `<li data-job="${j.id}">${html}</li>`;
+  return `<li data-job="${j.id}" data-status="${j.status}">${html}</li>`;
 }
 
 function bindJobActions(scope) {
@@ -930,7 +934,8 @@ function renderJobs() {
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   ul.innerHTML = "";
   if (!jobs.length) {
-    ul.innerHTML = `<li class="empty">暂无任务 — 选择文件后点「开始转换」</li>`;
+    ul.innerHTML = `<li class="empty empty-jobs">${icon("play")}
+      <p>暂无任务 — 选择文件后点「开始转换」</p></li>`;
     return;
   }
   for (const j of jobs) ul.insertAdjacentHTML("beforeend", jobCardHTML(j));

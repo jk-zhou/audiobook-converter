@@ -59,7 +59,7 @@
         <label class="btn small" for="folder-input">+ 文件夹（递归）</label>
         <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma" class="hidden">
         <input type="file" id="folder-input" webkitdirectory multiple class="hidden">
-        <div id="upload-progress" class="upload-progress"></div>
+        <div id="upload-progress" class="upload-progress" aria-live="polite" aria-label="上传进度"></div>
       <p class="hint">✕ / 清空 只会把文件从当前列表剔除，不删除数据（数据在「已上传文件」里统一管理）</p>
       </div>
       <div class="table-wrap">
@@ -192,7 +192,7 @@
         <button id="btn-cancel-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 取消全部</button>
         <button id="btn-clear-finished" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 清空已完成</button>
       </div>
-      <ul id="job-list" class="joblist"></ul>
+      <ul id="job-list" class="joblist" aria-live="polite"></ul>
     </section>
   </aside>
 </main>
