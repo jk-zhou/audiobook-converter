@@ -1,6 +1,9 @@
 import asyncio
 import json
+import time
+from datetime import datetime
 
+from . import db
 from .models import ACTIVE_STATUSES, Job, JobStatus
 
 
@@ -14,6 +17,52 @@ class JobManager:
         self.subscribers: list[asyncio.Queue] = []
         self._workers: list[asyncio.Task] = []
         self._last_progress: dict[str, float] = {}
+        self._last_db_progress: dict[str, tuple[float, float]] = {}  # (pct, ts)
+
+    # ---- DB persistence ----
+    def _persist(self, job: Job) -> None:
+        try:
+            db.save_job(job)
+        except Exception:
+            pass  # DB failure must never break the running transcode
+
+    def restore_from_db(self) -> int:
+        """Load full history from DB into memory; active -> interrupted."""
+        n = 0
+        for rec in db.list_job_records():
+            job = db.job_record_to_job(rec)
+            if job.status in ACTIVE_STATUSES:
+                job.status = JobStatus.INTERRUPTED
+                job.error = "服务重启，任务中断（源文件仍在可重试）"
+                job.finished_at = job.finished_at or datetime.now()
+                self._persist(job)
+            self.jobs[job.id] = job
+            n += 1
+        return n
+
+    def db_only_jobs(self) -> list[Job]:
+        """History rows evicted from memory (after clear_finished)."""
+        mem = set(self.jobs.keys())
+        return [db.job_record_to_job(r) for r in db.list_job_records()
+                if r.id not in mem]
+
+    def delete_output(self, job_id: str) -> bool:
+        job = self.jobs.get(job_id)
+        if not job:
+            return False
+        if job.output_path:
+            try:
+                job.output_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        job.output_deleted_at = datetime.now()
+        self._persist(job)
+        try:
+            db.mark_output_deleted(job_id)
+        except Exception:
+            pass
+        self.broadcast("job.update", job.model_dump(mode="json"))
+        return True
 
     def start_workers(self) -> None:
         for _ in range(self.max_concurrent):
@@ -48,6 +97,7 @@ class JobManager:
     # ---- job lifecycle ----
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
+        self._persist(job)
         self.broadcast("job.update", job.model_dump(mode="json"))
         self.queue.put_nowait(job.id)
 
@@ -83,9 +133,12 @@ class JobManager:
         if error is not None:
             job.error = error
         if status == JobStatus.DONE:
-            from datetime import datetime
             job.finished_at = datetime.now()
             job.progress = 100.0
+        if status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED,
+                      JobStatus.INTERRUPTED):
+            self._last_db_progress.pop(job_id, None)
+        self._persist(job)
         self.broadcast("job.update", job.model_dump(mode="json"))
 
     def set_progress(self, job_id: str, pct: float) -> None:
@@ -97,6 +150,12 @@ class JobManager:
         if abs(job.progress - last) >= 0.5 or job.progress >= 100.0:
             self._last_progress[job_id] = job.progress
             self.broadcast("job.update", job.model_dump(mode="json"))
+        # DB throttle: >=5% delta or >=5s since last DB write
+        last_pct, last_ts = self._last_db_progress.get(job_id, (-100.0, 0.0))
+        now = time.monotonic()
+        if abs(job.progress - last_pct) >= 5.0 or (now - last_ts) >= 5.0:
+            self._last_db_progress[job_id] = (job.progress, now)
+            self._persist(job)
 
     def register_proc(self, job_id: str, proc: asyncio.subprocess.Process) -> None:
         self.procs[job_id] = proc
@@ -110,7 +169,8 @@ class JobManager:
             from .transcoder import terminate
             await terminate(proc)
         job.status = JobStatus.CANCELLED
-        job.finished_at = job.finished_at or __import__("datetime").datetime.now()
+        job.finished_at = job.finished_at or datetime.now()
+        self._persist(job)
         self.broadcast("job.update", job.model_dump(mode="json"))
         return True
 
@@ -124,6 +184,8 @@ class JobManager:
         job.verify = None
         job.finished_at = None
         self._last_progress.pop(job_id, None)
+        self._last_db_progress.pop(job_id, None)
+        self._persist(job)
         self.broadcast("job.update", job.model_dump(mode="json"))
         self.queue.put_nowait(job.id)
         return True
@@ -136,9 +198,12 @@ class JobManager:
         return count
 
     def clear_finished(self) -> int:
+        """清理产物：删除输出文件、DB 标记保留历史、内存移除条目。"""
         gone = [jid for jid, j in self.jobs.items()
-                if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
+                if j.status in (JobStatus.DONE, JobStatus.FAILED,
+                                JobStatus.CANCELLED, JobStatus.INTERRUPTED)]
         for jid in gone:
+            self.delete_output(jid)
             self.jobs.pop(jid, None)
             self._last_progress.pop(jid, None)
             self.procs.pop(jid, None)

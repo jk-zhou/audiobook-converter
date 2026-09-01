@@ -59,6 +59,11 @@ async def lifespan(app: FastAPI):
     config.ensure_dirs()
     setup_logging()
     encoders.reset_cache()
+    from . import db as _db
+    _db.init_db(config.DATA_DIR)
+    n_hist = jm.restore_from_db()
+    if n_hist:
+        logging.getLogger("hac").info("restored %d job records from db", n_hist)
     jm.start_workers()
     yield
     await jm.stop_workers()

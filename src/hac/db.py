@@ -194,6 +194,7 @@ def job_to_record(job: Job) -> JobRecord:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
+        output_deleted_at=job.output_deleted_at,
     )
 
 
