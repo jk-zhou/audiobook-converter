@@ -44,8 +44,9 @@ def main():
             "document.querySelectorAll('#file-list tr').length >= 3", timeout=30000)
         headers = pg.evaluate(
             "[...document.querySelectorAll('#file-head th')].map(t=>t.textContent.trim())")
-        ok("F1: default columns", headers ==
-           ["#", "", "文件名", "标题", "章节/编号", "专辑", "作者", "演播者", "时长", "大小", ""],
+        # empty metadata columns (专辑/作者/演播者 with no tags) are auto-hidden
+        ok("F1: default columns (auto-hide empty)", headers ==
+           ["#", "", "文件名", "标题", "时长", "大小", ""],
            str(headers))
 
         # column header sort: asc → desc → back to upload order

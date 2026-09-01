@@ -41,6 +41,7 @@ def main():
            and pg.input_value("#bitrate") == "48k"
            and pg.input_value("#samplerate") == "24000"
            and pg.input_value("#channels") == "1")
+        pg.evaluate("document.getElementById('adv-box').open = true")
         pg.select_option("#bitrate", "64k")
         ok("manual change resets preset", pg.input_value("#preset") == "")
         pg.select_option("#preset", "audiobook_opus_48k")

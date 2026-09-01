@@ -363,6 +363,20 @@ function sortUploads() {
   state.uploads = keyed.map((k) => k.u);
 }
 
+function moveUpload(idx, delta) {
+  const to = idx + delta;
+  if (to < 0 || to >= state.uploads.length) return;
+  const arr = state.uploads.slice();
+  const [moved] = arr.splice(idx, 1);
+  arr.splice(to, 0, moved);
+  state.uploads = [...new Map(arr.map((u) => [u.id, u])).values()];
+  state.uploads.forEach((u, i) => { u.order = i; });
+  if (state.sort.key) state.sort = { key: null, dir: 1 };
+  $("btn-sort-reset").classList.add("hidden");
+  renderFiles();
+  saveSession();
+}
+
 function renderColumnPopover() {
   const pop = $("columns-pop");
   pop.innerHTML = "";
@@ -386,7 +400,19 @@ function renderFiles() {
   sortUploads();
   const head = $("file-head");
   const tbody = $("file-list");
-  const vis = COLUMNS.filter((c) => state.columns[c.key]);
+  // auto-hide metadata columns that are entirely empty in the current set
+  const emptyCols = {};
+  for (const c of COLUMNS) {
+    if (c.key === "name") continue;
+    emptyCols[c.key] = state.uploads.every((u) => {
+      const m = rowMeta(u);
+      const v = c.key === "size" ? u.size
+        : c.key === "mtime" ? u.lastModified : m[c.key];
+      return v == null || v === "";
+    });
+  }
+  const vis = COLUMNS.filter((c) => state.columns[c.key] &&
+    (c.key === "name" || !emptyCols[c.key] || !state.uploads.length));
 
   head.innerHTML = `<th class="nosort">#</th><th class="nosort"></th>` +
     vis.map((c) => {
@@ -428,7 +454,13 @@ function renderFiles() {
     };
     tr.innerHTML = `<td class="pos">${i + 1}</td><td class="handle">${icon("grip")}</td>` +
       vis.map(cell).join("") +
-      `<td><button class="del" title="移除" aria-label="从列表移除 ${escapeHtml(u.name)}">${icon("x")}</button></td>`;
+      `<td class="acts-cell">` +
+      `<button class="mv" data-mv="-1" title="上移" aria-label="上移 ${escapeHtml(u.name)}" ${i === 0 ? "disabled" : ""}>${icon("arrow-up")}</button>` +
+      `<button class="mv" data-mv="1" title="下移" aria-label="下移 ${escapeHtml(u.name)}" ${i === state.uploads.length - 1 ? "disabled" : ""}>${icon("arrow-down")}</button>` +
+      `<button class="del" title="移除" aria-label="从列表移除 ${escapeHtml(u.name)}">${icon("x")}</button></td>`;
+    tr.querySelectorAll(".mv").forEach((b) => {
+      b.onclick = () => moveUpload(i, parseInt(b.dataset.mv));
+    });
     tr.querySelector(".del").onclick = () => {
       state.uploads = state.uploads.filter((x) => x.id !== u.id);
       if (state.coverUploadId === u.id) state.coverUploadId = null;
@@ -468,9 +500,21 @@ function renderFiles() {
 
 function wireDrop() {
   const zone = $("col-files");
+  let dragDepth = 0;
   zone.addEventListener("dragover", (e) => e.preventDefault());
+  zone.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    dragDepth++;
+    zone.classList.add("dropping");
+  });
+  zone.addEventListener("dragleave", () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) zone.classList.remove("dropping");
+  });
   zone.addEventListener("drop", async (e) => {
     e.preventDefault();
+    dragDepth = 0;
+    zone.classList.remove("dropping");
     const files = await collectFilesFromDrop(e.dataTransfer);
     if (!files.length) { alert("拖拽内容中没有可识别的音频文件"); return; }
     uploadFiles(files);

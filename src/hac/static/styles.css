@@ -455,3 +455,42 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
   position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap;
 }
+
+/* ---------- File table enhancements (Task 5) ---------- */
+.filetable td.pos, .filetable td[colspan] { color: var(--accent); }
+.filetable thead th[aria-sort] { color: var(--accent2); }
+.empty {
+  display: flex; flex-direction: column; align-items: center; gap: var(--s3);
+  padding: var(--s6) var(--s4);
+}
+.empty .ic { width: 32px; height: 32px; color: var(--dim); opacity: .7; }
+.empty p { margin: 0; }
+.empty-cta-btn { width: auto; min-width: 160px; margin-top: var(--s1); pointer-events: auto; }
+.files-panel.dropping { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.files-panel.dropping::after {
+  content: "松开以添加文件"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent2);
+  font-size: var(--fs-lg); font-weight: 600; border-radius: var(--radius-l);
+  z-index: 10; pointer-events: none;
+}
+.files-panel { position: relative; }
+.filetable td:last-child { text-align: right; white-space: nowrap; width: 1%; }
+.filetable .mv, .filetable .del {
+  cursor: pointer; border: 0; background: none; color: var(--dim);
+  width: 28px; height: 28px; border-radius: var(--radius-s);
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; position: relative;
+}
+.filetable .mv::after, .filetable .del::after {
+  content: ""; position: absolute; inset: -8px;
+}
+.filetable .mv .ic, .filetable .del .ic { width: 14px; height: 14px; }
+.filetable .mv:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+.filetable .mv:disabled { opacity: .25; cursor: default; }
+.filetable .mv, .filetable .del { opacity: 0; transition: opacity .12s ease; }
+.filetable tr:hover .mv, .filetable tr:hover .del,
+.filetable tr:focus-within .mv, .filetable tr:focus-within .del { opacity: 1; }
+@media (hover: none) {
+  .filetable .mv, .filetable .del { opacity: 1; }
+}
