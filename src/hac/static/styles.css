@@ -551,3 +551,7 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 .lib-root:hover { color: var(--accent2); }
 .lib-root .ic { width: 14px; height: 14px; color: var(--accent); }
 .file-tools .btn.small { min-height: 32px; }
+
+/* ---------- persistence UI (sub-project B) ---------- */
+.badge.cleaned { color: var(--dim); border-style: dashed; }
+.joblist li.load-more { background: none; border: none; text-align: center; padding: var(--s2); }

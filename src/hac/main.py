@@ -425,6 +425,14 @@ async def put_session(req: dict):
     return {"ok": True}
 
 
+@app.post("/api/session-beacon")
+async def session_beacon(req: dict):
+    """navigator.sendBeacon flush on page hide (POST-only)."""
+    from . import db as _db
+    _db.session_set(json.dumps(req, ensure_ascii=False))
+    return {"ok": True}
+
+
 @app.post("/api/settings/import")
 async def import_session(req: dict):
     """One-time localStorage migration: only accepted when server session empty."""

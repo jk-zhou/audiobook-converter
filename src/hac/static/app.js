@@ -71,41 +71,95 @@ const fmtDur = (s) => {
 
 const SESSION_KEY = "hac.session.v1";
 
+function buildSessionPayload() {
+  const workingSet = state.uploads.map((u) =>
+    ({ id: u.id, name: u.name, size: u.size, kind: u.kind,
+       lastModified: u.lastModified }));
+  return {
+    preset: $("preset").value,
+    format: $("format").value,
+    codec: $("codec").value,
+    bitrate: $("bitrate").value,
+    samplerate: $("samplerate").value,
+    channels: $("channels").value,
+    normalize: $("normalize").checked,
+    mergeOn: $("merge-on").checked,
+    mergeTitle: $("merge-title").value,
+    mergeArtist: $("merge-artist").value,
+    mergeComposer: $("merge-composer").value,
+    metaTitle: $("meta-title").value,
+    metaArtist: $("meta-artist").value,
+    metaAlbum: $("meta-album").value,
+    metaComposer: $("meta-composer").value,
+    titleSource: $("title-source").value,
+    titlePattern: $("title-pattern").value,
+    sort: state.sort,
+    columns: state.columns,
+    workingSet,
+  };
+}
+
+let _sessionDebounce = null;
 function saveSession() {
-  // 同步写：会话必须精确反映最后一次调用的状态（防抖会让清空后被旧值覆盖）
+  // server-first (multi-device consistent), localStorage as offline fallback
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(buildSessionPayload())); }
+  catch (e) { /* storage unavailable */ }
+  clearTimeout(_sessionDebounce);
+  _sessionDebounce = setTimeout(() => {
+    fetch("/api/session", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSessionPayload()),
+    }).catch(() => {});
+  }, 500);
+}
+
+function flushSessionBeacon() {
   try {
-    const workingSet = state.uploads.map((u) =>
-      ({ id: u.id, name: u.name, size: u.size, kind: u.kind,
-         lastModified: u.lastModified }));
-    const s = {
-      preset: $("preset").value,
-      format: $("format").value,
-      codec: $("codec").value,
-      bitrate: $("bitrate").value,
-      samplerate: $("samplerate").value,
-      channels: $("channels").value,
-      normalize: $("normalize").checked,
-      mergeOn: $("merge-on").checked,
-      mergeTitle: $("merge-title").value,
-      mergeArtist: $("merge-artist").value,
-      mergeComposer: $("merge-composer").value,
-      metaTitle: $("meta-title").value,
-      metaArtist: $("meta-artist").value,
-      metaAlbum: $("meta-album").value,
-      metaComposer: $("meta-composer").value,
-      titleSource: $("title-source").value,
-      titlePattern: $("title-pattern").value,
-      sort: state.sort,
-      columns: state.columns,
-      workingSet,
-    };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
-  } catch (e) { /* storage unavailable */ }
+    navigator.sendBeacon("/api/session-beacon",
+      new Blob([JSON.stringify(buildSessionPayload())],
+               { type: "application/json" }));
+  } catch (e) { /* not supported */ }
+}
+
+async function restoreSessionFromServer() {
+  try {
+    const r = await fetch("/api/session");
+    if (r.ok) {
+      const s = await r.json();
+      applySession(s);
+      // server session wins: re-apply working set (before initial restore effect)
+      state.sessionWorkingSet = Array.isArray(s.workingSet) ? s.workingSet
+        : (Array.isArray(s.libPicks) ? s.libPicks.map((x) => ({ ...x, kind: "lib" })) : []);
+      renderFiles();
+      updateMergeHint();
+      saveSession();  // re-sync local fallback copy
+      return true;
+    }
+    // 404: no server session — migrate legacy localStorage if present
+    await migrateLocalSession();
+  } catch (e) { /* server unreachable, local fallback stays */ }
+  return false;
+}
+
+async function migrateLocalSession() {
+  // one-time: push old localStorage session to server, then clear local copy
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const r = await fetch("/api/settings/import", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: raw,
+    });
+    if (r.ok) localStorage.removeItem(SESSION_KEY);
+  } catch (e) { /* server unreachable */ }
 }
 
 function restoreSession() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { s = null; }
+  if (s) applySession(s);
+}
+
+function applySession(s) {
   if (!s) return;
   const setv = (id, v) => { if (v != null) $(id).value = v; };
   setv("preset", s.preset); setv("format", s.format); setv("codec", s.codec);
@@ -1105,13 +1159,16 @@ function jobCardHTML(j) {
     `</ul>`;
 
   const acts = [];
-  if (j.status === "done") acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">${icon("download")} 下载</button>`);
+  const cleaned = !!j.output_deleted_at;
+  if (j.status === "done" && !cleaned) acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">${icon("download")} 下载</button>`);
   if (j.status === "failed" || j.status === "cancelled")
     acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}">↻ 重试</button>`);
   if (ACTIVE.has(j.status))
     acts.push(`<button class="btn small subtle" data-act="cancel" data-id="${j.id}">${icon("x")} 取消</button>`);
   html += `<div class="job-actions">${acts.join("")}</div>`;
-  return `<li data-job="${j.id}" data-status="${j.status}">${html}</li>`;
+  const cleanedBadge = cleaned
+    ? `<span class="badge cleaned">产物已清理</span>` : "";
+  return `<li data-job="${j.id}" data-status="${j.status}">${html}${cleanedBadge}</li>`;
 }
 
 function bindJobActions(scope) {
@@ -1146,17 +1203,31 @@ function bindJobActions(scope) {
   });
 }
 
+const JOBS_RENDER_CAP = 50;
+let _jobsRenderLimit = JOBS_RENDER_CAP;
+
 function renderJobs() {
   const ul = $("job-list");
   const jobs = Object.values(state.jobs)
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   ul.innerHTML = "";
   if (!jobs.length) {
+    _jobsRenderLimit = JOBS_RENDER_CAP;
     ul.innerHTML = `<li class="empty empty-jobs">${icon("play")}
       <p>暂无任务 — 选择文件后点「开始转换」</p></li>`;
     return;
   }
-  for (const j of jobs) ul.insertAdjacentHTML("beforeend", jobCardHTML(j));
+  const shown = jobs.slice(0, _jobsRenderLimit);
+  for (const j of shown) ul.insertAdjacentHTML("beforeend", jobCardHTML(j));
+  if (jobs.length > shown.length) {
+    ul.insertAdjacentHTML("beforeend",
+      `<li class="load-more"><button class="btn small" id="btn-load-more">
+        加载更多（还有 ${jobs.length - shown.length} 条）</button></li>`);
+    ul.querySelector("#btn-load-more").onclick = () => {
+      _jobsRenderLimit += JOBS_RENDER_CAP;
+      renderJobs();
+    };
+  }
   bindJobActions(ul);
 }
 
@@ -1306,7 +1377,10 @@ function wireHeaderButtons() {
     location.href = "/api/download/zip?ids=" + done.map((j) => j.id).join(",");
   };
   $("btn-cancel-all").onclick = () => fetch("/api/jobs/cancel-all", { method: "POST" });
-  $("btn-clear-finished").onclick = () => fetch("/api/jobs/clear-finished", { method: "POST" });
+  $("btn-clear-finished").onclick = async () => {
+    await fetch("/api/jobs/clear-finished", { method: "POST" });
+    toast("产物已清理，历史记录保留");
+  };
 }
 
 /* ============ wiring & init ============ */
@@ -1418,9 +1492,16 @@ function init() {
   wireUploadsLibrary();
   wireHeaderButtons();
   connectSSE();
+  restoreSessionFromServer();
   restoreWorkingSetFromSession();
   renderFiles();
   updateMergeHint();
 }
+
+// flush pending session on tab close / hide
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushSessionBeacon();
+});
+window.addEventListener("pagehide", flushSessionBeacon);
 
 document.addEventListener("DOMContentLoaded", init);
