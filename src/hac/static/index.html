@@ -35,7 +35,7 @@
   <!-- 1 · FILES (full width working area) -->
   <section class="panel files-panel" id="col-files">
     <div class="panel-head">
-      <h2>1 · 文件 <span class="small dim" id="file-count"></span></h2>
+      <h2>文件 <span class="small dim" id="file-count"></span></h2>
       <div class="file-tools">
         <button id="btn-sort-reset" class="btn small subtle hidden">↺ 上传顺序</button>
         <div class="dropdown">
@@ -92,10 +92,10 @@
     </div>
   </section>
 
-  <div class="lower">
-    <!-- 2 · SETTINGS -->
+  <aside class="lower">
+    <!-- 转换设置（右侧栏） -->
     <section class="panel" id="col-settings">
-      <h2>2 · 设置</h2>
+      <h2>转换设置</h2>
       <label class="field">预设
         <select id="preset"><option value="">— 自定义 —</option></select>
         <span id="preset-hint" class="hint"></span>
@@ -165,12 +165,12 @@
         <label class="field">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
       </fieldset>
 
-      <button id="btn-start" class="btn primary"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> 开始转换</button>
+      <button id="btn-start" class="btn primary sticky-cta"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> 开始转换</button>
     </section>
 
     <!-- 3 · JOBS -->
     <section class="panel" id="col-jobs">
-      <h2>3 · 任务</h2>
+      <h2>任务</h2>
       <div class="jobbar">
         <button id="btn-zip" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 打包 zip</button>
         <button id="btn-cancel-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 取消全部</button>
@@ -178,7 +178,7 @@
       </div>
       <ul id="job-list" class="joblist"></ul>
     </section>
-  </div>
+  </aside>
 </main>
 
 <script src="/static/app.js"></script>

@@ -18,12 +18,17 @@ def main():
             "!!document.querySelector('link[rel=icon][type=\"image/svg+xml\"]')"))
         ok("header logo", pg.locator("header .logo").count() == 1)
 
-        # F2: layout — files full-width on top, settings|jobs below
-        ok("layout: files panel full-width on top", pg.evaluate(
-            "getComputedStyle(document.querySelector('.layout')).flexDirection") == "column")
-        ok("layout: settings | jobs side by side", pg.evaluate(
-            "getComputedStyle(document.querySelector('.lower'))"
+        # F2: layout — left work area + right sidebar (settings above jobs)
+        ok("layout: work area + sidebar grid", pg.evaluate(
+            "getComputedStyle(document.querySelector('.layout'))"
             ".gridTemplateColumns.split(' ').length") == 2)
+        ok("layout: settings | jobs stacked in sidebar", pg.evaluate(
+            """(() => {
+              const s = document.getElementById('col-settings').getBoundingClientRect();
+              const j = document.getElementById('col-jobs').getBoundingClientRect();
+              const f = document.getElementById('col-files').getBoundingClientRect();
+              return j.top >= s.bottom && f.right <= s.left;
+            })()"""))
 
         # F1: metadata table columns (default set)
         subprocess = __import__("subprocess")
