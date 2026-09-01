@@ -46,7 +46,7 @@ def main():
             "[...document.querySelectorAll('#file-head th')].map(t=>t.textContent.trim())")
         # empty metadata columns (专辑/作者/演播者 with no tags) are auto-hidden
         ok("F1: default columns (auto-hide empty)", headers ==
-           ["#", "", "文件名", "标题", "编码", "码率", "采样率", "时长", "大小", ""],
+           ["#", "", "文件名", "标题", "编码", "码率", "采样率", "声道", "时长", "大小", ""],
            str(headers))
 
         # column header sort: asc → desc → back to upload order

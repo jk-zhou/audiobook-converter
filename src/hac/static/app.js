@@ -13,9 +13,10 @@ const state = {
   coverUploadId: null,
   sort: { key: null, dir: 1 },     // null key = 上传顺序
   columns: { name: true, track: true, title: true, codec: true, bitrate: true,
-             srate: true, duration: true, size: true,
+             srate: true, channels: true, duration: true, size: true,
              album: false, artist: false, composer: false, mtime: false },
   upSort: { key: null, dir: 1 },   // 已上传文件表排序
+  libSort: { key: null, dir: 1 },  // 书库表排序
 };
 
 const COLUMNS = [
@@ -25,6 +26,7 @@ const COLUMNS = [
   { key: "codec",    label: "编码" },
   { key: "bitrate",  label: "码率" },
   { key: "srate",    label: "采样率" },
+  { key: "channels", label: "声道" },
   { key: "duration", label: "时长" },
   { key: "size",     label: "大小" },
   { key: "album",    label: "专辑", def: false },
@@ -308,6 +310,7 @@ function rowMeta(u) {
     codec: (u.info && u.info.codec) || lib.codec || null,
     bitrate: (u.info && u.info.bitrate) || lib.bitrate || null,
     srate: (u.info && u.info.sample_rate) || lib.sample_rate || null,
+    channels: (u.info && u.info.channels) || lib.channels || null,
   };
 }
 
@@ -355,7 +358,7 @@ function sortUploads() {
     else if (key === "mtime") d = (x.u.lastModified || 0) - (y.u.lastModified || 0);
     else {
       const xv = x.m[key], yv = y.m[key];
-      if (key === "track" || key === "duration" || key === "bitrate" || key === "srate") {
+      if (key === "track" || key === "duration" || key === "bitrate" || key === "srate" || key === "channels") {
         const xn = xv == null, yn = yv == null;
         if (xn && yn) d = naturalCompare(x.u.name, y.u.name);
         else if (xn) return 1;
@@ -464,6 +467,7 @@ function renderFiles() {
       if (c.key === "codec") return `<td class="mono">${escapeHtml(m.codec ?? "")}</td>`;
       if (c.key === "bitrate") return `<td>${fmtKbps(m.bitrate)}</td>`;
       if (c.key === "srate") return `<td>${fmtHz(m.srate)}</td>`;
+      if (c.key === "channels") return `<td>${m.channels ? (m.channels === 1 ? "单" : m.channels === 2 ? "双" : m.channels) : ""}</td>`;
       if (c.key === "size") return `<td>${fmtSize(u.size)}</td>`;
       if (c.key === "mtime")
         return `<td>${u.lastModified ? new Date(u.lastModified).toLocaleString() : ""}</td>`;
@@ -577,7 +581,7 @@ function isReferenced(u) {
 
 async function refreshUploadsLibrary() {
   try {
-    state.uploadsAll = await (await fetch("/api/uploads")).json();
+    state.uploadsAllRaw = await (await fetch("/api/uploads")).json();
     renderUploadsLibrary();
   } catch (e) { /* unreachable */ }
 }
@@ -591,6 +595,58 @@ const UP_COLUMNS = [
   { key: "duration", label: "时长" },
   { key: "size",    label: "大小" },
 ];
+
+const LIB_COLUMNS = [
+  { key: "name",     label: "文件名" },
+  { key: "ext",      label: "类型" },
+  { key: "codec",    label: "编码" },
+  { key: "bitrate",  label: "码率" },
+  { key: "srate",    label: "采样率" },
+  { key: "channels", label: "声道" },
+  { key: "duration", label: "时长" },
+  { key: "size",     label: "大小" },
+];
+
+function libRowMeta(f) {
+  const m = state.libMeta[f.id] || {};
+  return {
+    name: f.name,
+    ext: (f.name.includes(".") ? f.name.split(".").pop() : "").toUpperCase(),
+    codec: m.codec || null,
+    bitrate: m.bitrate || null,
+    srate: m.sample_rate || null,
+    channels: m.channels || null,
+    duration: m.duration || null,
+    size: f.size,
+  };
+}
+
+function sortLibFiles(files) {
+  const { key, dir } = state.libSort;
+  if (!key) return files;
+  const regIdx = new Map(files.map((f, i) => [f.id, i]));
+  const keyed = files.map((f) => ({ f, m: libRowMeta(f), i: regIdx.get(f.id) }));
+  keyed.sort((x, y) => {
+    let d = 0;
+    if (key === "name") d = naturalCompare(x.f.name, y.f.name);
+    else if (key === "size" || key === "bitrate" || key === "srate" ||
+             key === "channels" || key === "duration") {
+      const xn = x.m[key] == null, yn = y.m[key] == null;
+      if (xn && yn) d = naturalCompare(x.f.name, y.f.name);
+      else if (xn) return 1;
+      else if (yn) return -1;
+      else d = x.m[key] - y.m[key];
+    } else {
+      const xs = String(x.m[key] ?? ""), ys = String(y.m[key] ?? "");
+      if (!xs && !ys) d = naturalCompare(x.f.name, y.f.name);
+      else if (!xs) return 1;
+      else if (!ys) return -1;
+      else d = xs.localeCompare(ys);
+    }
+    return (d * dir) || (x.i - y.i);
+  });
+  return keyed.map((k) => k.f);
+}
 
 function upRowMeta(u) {
   const info = u.info || {};
@@ -606,9 +662,13 @@ function upRowMeta(u) {
 }
 
 function sortUploadsAll() {
+  // always re-derive from the raw server order so sorting never mutates the
+  // canonical list and a third click cleanly restores registration order
+  state.uploadsAll = [...(state.uploadsAllRaw || state.uploadsAll)];
   const { key, dir } = state.upSort;
   if (!key) return;   // 服务器注册顺序
-  const keyed = state.uploadsAll.map((u, i) => ({ u, m: upRowMeta(u), i }));
+  const regIdx = new Map(state.uploadsAll.map((u, i) => [u.id, i]));
+  const keyed = state.uploadsAll.map((u) => ({ u, m: upRowMeta(u), i: regIdx.get(u.id) }));
   keyed.sort((x, y) => {
     let d = 0;
     if (key === "name") d = naturalCompare(x.u.name, y.u.name);
@@ -634,6 +694,7 @@ function renderUploadsLibrary() {
   const tbody = $("uploads-list");
   const head = $("uploads-head");
   if (!tbody) return;
+  sortUploadsAll();
   const rows = state.uploadsAll;
   const cnt = $("up-count");
   if (cnt) cnt.textContent = `共 ${rows.length} 个文件`;
@@ -660,7 +721,6 @@ function renderUploadsLibrary() {
     };
   });
 
-  sortUploadsAll();
   tbody.innerHTML = "";
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="${UP_COLUMNS.length + 2}" class="empty">暂无已上传文件</td></tr>`;
@@ -805,46 +865,101 @@ async function libLoad(path) {
       // 顶层：把每个书库根显示为一个虚拟文件夹
       state.libPath = "";
       $("lib-path").textContent = "选择书库";
+      $("lib-head").innerHTML = "";
       ul.innerHTML = "";
       for (const r of state.libRoots) {
-        const li = document.createElement("li");
-        li.innerHTML = `<span class="icon">${icon("library")}</span><span class="name" style="cursor:pointer">${escapeHtml(r.name)}/</span>`;
-        li.onclick = () => libLoad(r.path);
-        ul.appendChild(li);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="${LIB_COLUMNS.length + 1}" class="name-cell lib-root">${icon("library")} ${escapeHtml(r.name)}/</td>`;
+        tr.onclick = () => libLoad(r.path);
+        ul.appendChild(tr);
       }
       return;
     }
     const res = await fetch("/api/library/list?path=" + encodeURIComponent(path || ""));
     if (res.status === 403) {
-      ul.innerHTML = `<li class="empty">⛔ 无权访问（不在书库范围内）</li>`;
+      ul.innerHTML = `<tr><td colspan="${LIB_COLUMNS.length + 1}" class="empty">⛔ 无权访问（不在书库范围内）</td></tr>`;
+      $("lib-head").innerHTML = "";
       return;
     }
-    if (!res.ok) { ul.innerHTML = `<li class="empty">HTTP ${res.status}</li>`; return; }
+    if (!res.ok) { ul.innerHTML = `<tr><td colspan="${LIB_COLUMNS.length + 1}" class="empty">HTTP ${res.status}</td></tr>`; $("lib-head").innerHTML = ""; return; }
     const data = await res.json();
     state.libPath = data.path;
     $("lib-path").textContent = displayLibPath(data.path);
-    ul.innerHTML = "";
-    if (!data.dirs.length && !data.files.length)
-      ul.innerHTML = `<li class="empty">空目录（无音频文件）</li>`;
-    for (const d of data.dirs) {
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="icon">${icon("folder")}</span><span class="name" style="cursor:pointer">${escapeHtml(d.name)}/</span>`;
-      li.onclick = () => libLoad(d.path);
-      ul.appendChild(li);
-    }
-    for (const f of data.files) {
-      const inList = state.uploads.some((u) => u.id === f.id);
-      const li = document.createElement("li");
-      li.innerHTML = `<input type="checkbox" class="libpick" data-libid="${escapeHtml(f.id)}" ` +
-        `data-libname="${escapeHtml(f.name)}" ${inList ? "checked" : ""}>` +
-        `<span class="name">${icon("music")} ${escapeHtml(f.name)}</span><span class="meta">${fmtSize(f.size)}</span>`;
-      li.querySelector("input").addEventListener("change", (e) => {
-        toggleLibFile({ id: f.id, name: f.name, size: f.size }, e.target.checked);
-      });
-      ul.appendChild(li);
-    }
+    renderLibTable(data);
   } catch (e) {
     $("lib-path").textContent = "加载失败: " + e;
+  }
+}
+
+function renderLibTable(data) {
+  const head = $("lib-head");
+  const tbody = $("lib-list");
+
+  head.innerHTML = `<th class="nosort"></th>` +
+    LIB_COLUMNS.map((c) => {
+      let arrow = "", as = "";
+      if (state.libSort.key === c.key) {
+        arrow = state.libSort.dir === 1 ? " ▲" : " ▼";
+        as = ` aria-sort="${state.libSort.dir === 1 ? "ascending" : "descending"}"`;
+      }
+      return `<th data-lkey="${c.key}"${as}>${c.label}${arrow}</th>`;
+    }).join("") + `<th class="nosort"></th>`;
+
+  head.querySelectorAll("th[data-lkey]").forEach((th) => {
+    th.onclick = () => {
+      const k = th.dataset.lkey;
+      if (state.libSort.key === k) {
+        if (state.libSort.dir === 1) state.libSort.dir = -1;
+        else state.libSort = { key: null, dir: 1 };
+      } else state.libSort = { key: k, dir: 1 };
+      libLoad(state.libPath);
+    };
+  });
+
+  tbody.innerHTML = "";
+  for (const d of data.dirs) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td></td>` +
+      `<td class="name-cell lib-dir" title="${escapeHtml(d.name)}" colspan="${LIB_COLUMNS.length - 1}">${icon("folder")} ${escapeHtml(d.name)}/</td>` +
+      `<td class="up-acts"></td>`;
+    tr.querySelector(".name-cell").onclick = () => libLoad(d.path);
+    tbody.appendChild(tr);
+  }
+  if (!data.dirs.length && !data.files.length) {
+    tbody.innerHTML = `<tr><td colspan="${LIB_COLUMNS.length + 1}" class="empty">空目录（无音频文件）</td></tr>`;
+    return;
+  }
+  // probe metadata for sorting/display (cached in libMeta)
+  const missing = data.files.filter((f) => !(f.id in state.libMeta)).map((f) => f.id.slice(4));
+  if (missing.length) {
+    fetch("/api/library/probe", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths: missing }),
+    }).then((r) => r.ok ? r.json() : {}).then((meta) => {
+      for (const [p, v] of Object.entries(meta)) state.libMeta[`lib:${p}`] = v;
+      renderLibTable(data);   // re-render with metadata
+    }).catch(() => {});
+  }
+  const sorted = sortLibFiles(data.files);
+  for (const f of sorted) {
+    const m = libRowMeta(f);
+    const inList = state.uploads.some((u) => u.id === f.id);
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><input type="checkbox" class="libpick" data-libid="${escapeHtml(f.id)}" ` +
+      `data-libname="${escapeHtml(f.name)}" ${inList ? "checked" : ""} aria-label="选择 ${escapeHtml(f.name)}"></td>` +
+      `<td class="name-cell" title="${escapeHtml(f.name)}">${icon("music")} ${escapeHtml(f.name)}</td>` +
+      `<td>${escapeHtml(m.ext)}</td>` +
+      `<td class="mono">${escapeHtml(m.codec ?? "")}</td>` +
+      `<td>${fmtKbps(m.bitrate)}</td>` +
+      `<td>${fmtHz(m.srate)}</td>` +
+      `<td>${m.channels ? (m.channels === 1 ? "单" : m.channels === 2 ? "双" : m.channels) : ""}</td>` +
+      `<td>${fmtDur(m.duration)}</td>` +
+      `<td>${fmtSize(f.size)}</td>`;
+    tr.querySelector("input").addEventListener("change", (e) => {
+      toggleLibFile({ id: f.id, name: f.name, size: f.size }, e.target.checked);
+    });
+    tbody.appendChild(tr);
   }
 }
 

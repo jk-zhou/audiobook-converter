@@ -156,11 +156,11 @@ def main():
         pg2.wait_for_selector("#health-badge.pill.ok", timeout=8000)
         pg2.click('.tab[data-tab="library"]')
         pg2.wait_for_function(
-            "document.querySelectorAll('#lib-list li').length > 0", timeout=10000)
+            "document.querySelectorAll('#lib-list tr').length > 0", timeout=10000)
         ok("library roots shown (书库名)", "library" in pg2.inner_text("#lib-roots"))
         pg2.get_by_text("testbook/").click()
         pg2.wait_for_function(
-            "[...document.querySelectorAll('#lib-list .name')]"
+            "[...document.querySelectorAll('#lib-list .name-cell')]"
             ".some(e => e.textContent.includes('ch3.flac'))", timeout=10000)
         pg2.evaluate("state.uploads = []")   # isolate: only the library file
         pg2.locator('#lib-list input.libpick[data-libid*="ch3.flac"]').check()

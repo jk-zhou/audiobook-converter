@@ -183,6 +183,7 @@ async def library_probe(req: LibraryProbeRequest):
                 "codec": info.get("codec"),
                 "bitrate": info.get("bitrate"),
                 "sample_rate": info.get("sample_rate"),
+                "channels": info.get("channels"),
             }
         except probe.ProbeError:
             out[str(p)] = {"title": None, "track": None, "album": None,

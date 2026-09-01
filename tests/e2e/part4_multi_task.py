@@ -119,10 +119,10 @@ def main():
         # ===== 任务 3：书库导入单文件转换 =====
         pg.click('.tab[data-tab="library"]')
         pg.wait_for_function(
-            "document.querySelectorAll('#lib-list li').length > 0", timeout=10000)
+            "document.querySelectorAll('#lib-list tr').length > 0", timeout=10000)
         pg.get_by_text("testbook/").click()
         pg.wait_for_function(
-            "[...document.querySelectorAll('#lib-list .name')]"
+            "[...document.querySelectorAll('#lib-list .name-cell')]"
             ".some(e => e.textContent.includes('ch3.flac'))", timeout=10000)
         pg.evaluate("state.uploads = state.uploads.filter(u=>!u.kind || u.kind!=='lib')")
         pg.locator('#lib-list input.libpick[data-libid*="ch3.flac"]').check()
