@@ -1,38 +1,42 @@
-FROM python:3.11-slim
-
-# ffmpeg fallback + curl for healthcheck
+# ---- Stage 1: build fdk-aac + ffmpeg (nonfree: libfdk_aac) ----
+# Nonfree build: image is for self-hosting only, not for redistribution.
+FROM debian:bookworm-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg curl ca-certificates && rm -rf /var/lib/apt/lists/*
+      build-essential pkg-config yasm nasm autoconf automake libtool \
+      ca-certificates curl xz-utils git && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+# fdk-aac 2.0.2
+RUN curl -fsSL https://github.com/mstorsjo/fdk-aac/archive/refs/tags/v2.0.2.tar.gz | tar xz && \
+    cd fdk-aac-2.0.2 && ./autogen.sh && \
+    ./configure --prefix=/usr/local --enable-static --disable-shared && \
+    make -j"$(nproc)" && make install
+# ffmpeg 7.1.1 (stable release; full codec coverage, no --disable-everything)
+RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz | tar xJ && \
+    cd ffmpeg-7.1.1 && ./configure --prefix=/usr/local \
+      --enable-gpl --enable-nonfree --enable-libfdk-aac \
+      --disable-doc --disable-debug && \
+    make -j"$(nproc)" && make install
 
-# BtbN static ffmpeg (ffmpeg + ffprobe; NOTE: no longer ships libfdk_aac).
-# HE-AAC presets stay auto-hidden in the default image — mount a locally built
-# binary (scripts/build-he-ffmpeg.sh) or build it inside the image if needed.
-# Falls back to the apt ffmpeg above if the download fails at build time.
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz
-RUN set -e; \
-    tmp=$(mktemp -d); \
-    (curl -fsSL "$FFMPEG_URL" -o "$tmp/f.tar.xz" \
-      && tar -xJf "$tmp/f.tar.xz" -C "$tmp" \
-      && find "$tmp" -type f -name ffmpeg  -exec cp {} /usr/local/bin/ \; \
-      && find "$tmp" -type f -name ffprobe -exec cp {} /usr/local/bin/ \; \
-      && chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe) \
-     || echo "WARN: BtbN download failed; apt ffmpeg (no libfdk_aac) will be used"; \
-    rm -rf "$tmp"
-
-RUN useradd -m -u 1000 app
+# ---- Stage 2: runtime ----
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl gosu ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 WORKDIR /app
-USER app
-
-COPY --chown=app:app pyproject.toml ./
-COPY --chown=app:app src/ ./src/
+COPY pyproject.toml ./
+COPY src/ ./src/
 RUN pip install --no-cache-dir .
-
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+# PUID/PGID left empty by default: root runs uvicorn directly.
+# NAS deployments (compose) set PUID/PGID; entrypoint drops privileges then.
 ENV HAC_DATA_DIR=/app/data \
-    HAC_MAX_CONCURRENT=2
+    HAC_MAX_CONCURRENT=2 \
+    PUID= \
+    PGID=
 RUN mkdir -p /app/data/uploads /app/data/work /app/data/outputs /app/data/library
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
-
 EXPOSE 8000
-ENTRYPOINT ["uvicorn", "hac.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
