@@ -103,7 +103,7 @@ main ← feat/mvp-improved（已合并，快进）
 | 2 | NAS/远程真机部署 | 局域网多设备访问、防火墙端口、Unraid 只读挂载 + HAC_LIBRARY_ROOTS |
 | 3 | Apple Books 真机回归 | 294 章《诛仙》合并产物导入 Books 实测章节导航/封面/续播（最终用户视角） |
 | 4 | v0.2 模板批处理 | 规格草案 `docs/05-v0.2-spec-draft.md`（模板解析/批量重命名），实施前需重审其算法 |
-| 5 | v0.3 播放器 + SQLite | 任务历史持久化（当前重启丢任务，见 roadmap §9）、A/B 对比播放 |
+| 5 | v0.3 播放器 | A/B 对比播放（✅ SQLite 任务历史/设置/会话持久化已落地：`feat/persistence`，见 `docs/superpowers/specs/2026-09-01-persistence-design.md`） |
 | 6 | 任务队列可观测性 | 失败任务重试时若源已删除会 404（引导用户去已上传 tab）；可加更友好提示 |
 
 明确**不做**（设计边界，见 roadmap §4）：多用户/鉴权、云端存储、实时波形、多设备同步。
