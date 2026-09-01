@@ -70,8 +70,9 @@ def test_match_track_total():
 
 
 def test_match_greedy_ambiguity_raises():
+    # 完全无字面量：无法唯一切分
     with pytest.raises(TemplateMatchError):
-        match_filename("${TrackTitle} ${TrackTitle}", "a b")
+        match_filename("${TrackTitle}${Artist}", "ab")
 
 
 def test_match_missing_required():
@@ -87,10 +88,16 @@ def test_match_anchor_backtrack():
 
 
 def test_match_trailing_greedy():
-    # 尾部贪婪字段吃掉剩余全部（含空格）
+    # 尾部贪婪字段吃掉剩余全部（含空格）——最后一个字段后无相邻贪婪，允许
     fields = match_filename("第${TrackNum}集 ${TrackTitle}", "第2集 魔高一丈 虹桥死战")
     assert fields["TrackNum"] == 2
     assert fields["TrackTitle"] == "魔高一丈 虹桥死战"
+
+
+def test_match_space_between_greedy_raises():
+    # 仅空格分隔的两个贪婪字段切分不唯一
+    with pytest.raises(TemplateMatchError):
+        match_filename("${TrackTitle} ${Artist}", "风起 萧鼎")
 
 
 def test_match_year_strict():

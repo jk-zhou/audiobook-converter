@@ -75,7 +75,17 @@ def validate_template(tpl: str) -> list[str]:
         if s.kind == "field" and s.value not in FIELDS:
             errs.append(f"未知字段 {s.value}；可用：{', '.join(FIELDS)}")
     fields = [s for s in segs if s.kind == "field"]
-    literals = [s for s in segs if s.kind == "literal" and s.value.strip()]
+    # 每对相邻贪婪字段之间必须有非空白字面量（与 match 的歧义规则一致）
+    greedy = [s for s in fields if s.value in GREEDY]
+    if len(greedy) > 1:
+        for a, b in zip(greedy, greedy[1:]):
+            ia, ib = segs.index(a), segs.index(b)
+            between = segs[ia + 1:ib]
+            if not any(s.kind == "literal" and s.value.strip() for s in between):
+                errs.append("贪婪字段（标题/作者等）之间需要非空格分隔符，如 "
+                            "'${TrackTitle} - ${Artist}'")
+                break
+    literals = [s for s in segs if s.kind == "literal" and s.value != ""]
     if len(fields) > 1 and not any(literals):
         errs.append("多个字段必须用字面量分隔（否则无法唯一解析），如 "
                     "'${TrackNum} ${TrackTitle}'")
@@ -126,13 +136,15 @@ def match_filename(tpl: str, stem: str) -> dict:
         if s.value not in FIELDS:
             raise TemplateMatchError(f"未知字段 {s.value}")
     # 相邻两个贪婪字段之间必须有非空白字面量锚点，否则无法唯一切分
+    # （纯空格分隔不算：懒惰匹配固定吞到第一个空格，切分不唯一）
     for a, b in zip(field_segs, field_segs[1:]):
         if a.value in GREEDY and b.value in GREEDY:
             ia, ib = segs.index(a), segs.index(b)
             between = segs[ia + 1:ib]
             if not any(s.kind == "literal" and s.value.strip() for s in between):
                 raise TemplateMatchError(
-                    f"字段 {a.value} 与 {b.value} 之间缺少字面量分隔，无法唯一解析")
+                    f"字段 {a.value} 与 {b.value} 之间需要非空格分隔符"
+                    f"（如 - · _），否则无法唯一解析")
 
     # Build regex: literal -> escaped (whitespace-flex), field -> group.
     # Greedy fields use possessive-ish chunks on the following anchor via
