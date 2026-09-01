@@ -386,7 +386,6 @@ function moveUpload(idx, delta) {
   state.uploads = [...new Map(arr.map((u) => [u.id, u])).values()];
   state.uploads.forEach((u, i) => { u.order = i; });
   if (state.sort.key) state.sort = { key: null, dir: 1 };
-  $("btn-sort-reset").classList.add("hidden");
   renderFiles();
   saveSession();
 }
@@ -402,6 +401,8 @@ function renderColumnPopover() {
     cb.onchange = () => {
       state.columns[c.key] = cb.checked;
       renderFiles();
+      renderUploadsLibrary();
+      if (state.libPath) libLoad(state.libPath);
       saveSession();
     };
     label.appendChild(cb);
@@ -445,7 +446,6 @@ function renderFiles() {
         if (state.sort.dir === 1) state.sort.dir = -1;
         else state.sort = { key: null, dir: 1 };   // third click: back to upload order
       } else state.sort = { key: k, dir: 1 };
-      $("btn-sort-reset").classList.toggle("hidden", state.sort.key == null);
       renderFiles();
       saveSession();
     };
@@ -508,7 +508,6 @@ function renderFiles() {
       state.uploads = [...new Map(arr.map((u) => [u.id, u])).values()];
       state.uploads.forEach((u, idx) => { u.order = idx; });
       if (state.sort.key) state.sort = { key: null, dir: 1 };
-      $("btn-sort-reset").classList.add("hidden");
       renderFiles();
       saveSession();
     });
@@ -562,12 +561,6 @@ function wireDrop() {
         !$("columns-pop").contains(e.target) && e.target.id !== "btn-columns")
       $("columns-pop").classList.add("hidden");
   });
-  $("btn-sort-reset").onclick = () => {
-    state.sort = { key: null, dir: 1 };
-    $("btn-sort-reset").classList.add("hidden");
-    renderFiles();
-    saveSession();
-  };
 }
 
 /* ============ tabs & library ============ */
@@ -699,8 +692,10 @@ function renderUploadsLibrary() {
   const cnt = $("up-count");
   if (cnt) cnt.textContent = `共 ${rows.length} 个文件`;
 
+  const upVis = UP_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
+    !(c.key in state.columns) || state.columns[c.key]);
   head.innerHTML = `<th class="nosort"></th>` +
-    UP_COLUMNS.map((c) => {
+    upVis.map((c) => {
       let arrow = "", as = "";
       if (state.upSort.key === c.key) {
         arrow = state.upSort.dir === 1 ? " ▲" : " ▼";
@@ -723,7 +718,7 @@ function renderUploadsLibrary() {
 
   tbody.innerHTML = "";
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${UP_COLUMNS.length + 2}" class="empty">暂无已上传文件</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${upVis.length + 2}" class="empty">暂无已上传文件</td></tr>`;
     return;
   }
   for (const u of rows) {
@@ -731,15 +726,21 @@ function renderUploadsLibrary() {
     const isCover = u.info && u.info.kind === "cover";
     const m = upRowMeta(u);
     const tr = document.createElement("tr");
+    const upCell = (key) => {
+      if (key === "name")
+        return `<td class="name-cell" title="${escapeHtml(u.name)}">${icon(isCover ? "library" : "music")} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</td>`;
+      if (key === "ext") return `<td>${escapeHtml(m.ext)}</td>`;
+      if (key === "codec") return `<td class="mono">${escapeHtml(m.codec ?? "")}</td>`;
+      if (key === "bitrate") return `<td>${fmtKbps(m.bitrate)}</td>`;
+      if (key === "srate") return `<td>${fmtHz(m.srate)}</td>`;
+      if (key === "channels") return `<td>${m.channels ? (m.channels === 1 ? "单" : m.channels === 2 ? "双" : m.channels) : ""}</td>`;
+      if (key === "duration") return `<td>${fmtDur(m.duration)}</td>`;
+      if (key === "size") return `<td>${fmtSize(u.size)}</td>`;
+      return `<td></td>`;
+    };
     tr.innerHTML =
       `<td><input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""} aria-label="选择 ${escapeHtml(u.name)}"></td>` +
-      `<td class="name-cell" title="${escapeHtml(u.name)}">${icon(isCover ? "library" : "music")} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</td>` +
-      `<td>${escapeHtml(m.ext)}</td>` +
-      `<td class="mono">${escapeHtml(m.codec ?? "")}</td>` +
-      `<td>${fmtKbps(m.bitrate)}</td>` +
-      `<td>${fmtHz(m.srate)}</td>` +
-      `<td>${fmtDur(m.duration)}</td>` +
-      `<td>${fmtSize(u.size)}</td>` +
+      upVis.map((c) => upCell(c.key)).join("") +
       `<td class="up-acts">` +
       (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">${icon("download")} 加入列表</button>`) +
       `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" aria-label="删除 ${escapeHtml(u.name)}" ${locked ? "disabled" : ""}>${icon("x")}</button></td>`;
@@ -895,8 +896,10 @@ function renderLibTable(data) {
   const head = $("lib-head");
   const tbody = $("lib-list");
 
+  const libVis = LIB_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
+    !(c.key in state.columns) || state.columns[c.key]);
   head.innerHTML = `<th class="nosort"></th>` +
-    LIB_COLUMNS.map((c) => {
+    libVis.map((c) => {
       let arrow = "", as = "";
       if (state.libSort.key === c.key) {
         arrow = state.libSort.dir === 1 ? " ▲" : " ▼";
@@ -920,7 +923,7 @@ function renderLibTable(data) {
   for (const d of data.dirs) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td></td>` +
-      `<td class="name-cell lib-dir" title="${escapeHtml(d.name)}" colspan="${LIB_COLUMNS.length - 1}">${icon("folder")} ${escapeHtml(d.name)}/</td>` +
+      `<td class="name-cell lib-dir" title="${escapeHtml(d.name)}" colspan="${libVis.length}">${icon("folder")} ${escapeHtml(d.name)}/</td>` +
       `<td class="up-acts"></td>`;
     tr.querySelector(".name-cell").onclick = () => libLoad(d.path);
     tbody.appendChild(tr);
@@ -945,17 +948,23 @@ function renderLibTable(data) {
     const m = libRowMeta(f);
     const inList = state.uploads.some((u) => u.id === f.id);
     const tr = document.createElement("tr");
+    const libCell = (key) => {
+      if (key === "name")
+        return `<td class="name-cell" title="${escapeHtml(f.name)}">${icon("music")} ${escapeHtml(f.name)}</td>`;
+      if (key === "ext") return `<td>${escapeHtml(m.ext)}</td>`;
+      if (key === "codec") return `<td class="mono">${escapeHtml(m.codec ?? "")}</td>`;
+      if (key === "bitrate") return `<td>${fmtKbps(m.bitrate)}</td>`;
+      if (key === "srate") return `<td>${fmtHz(m.srate)}</td>`;
+      if (key === "channels") return `<td>${m.channels ? (m.channels === 1 ? "单" : m.channels === 2 ? "双" : m.channels) : ""}</td>`;
+      if (key === "duration") return `<td>${fmtDur(m.duration)}</td>`;
+      if (key === "size") return `<td>${fmtSize(f.size)}</td>`;
+      return `<td></td>`;
+    };
     tr.innerHTML =
       `<td><input type="checkbox" class="libpick" data-libid="${escapeHtml(f.id)}" ` +
       `data-libname="${escapeHtml(f.name)}" ${inList ? "checked" : ""} aria-label="选择 ${escapeHtml(f.name)}"></td>` +
-      `<td class="name-cell" title="${escapeHtml(f.name)}">${icon("music")} ${escapeHtml(f.name)}</td>` +
-      `<td>${escapeHtml(m.ext)}</td>` +
-      `<td class="mono">${escapeHtml(m.codec ?? "")}</td>` +
-      `<td>${fmtKbps(m.bitrate)}</td>` +
-      `<td>${fmtHz(m.srate)}</td>` +
-      `<td>${m.channels ? (m.channels === 1 ? "单" : m.channels === 2 ? "双" : m.channels) : ""}</td>` +
-      `<td>${fmtDur(m.duration)}</td>` +
-      `<td>${fmtSize(f.size)}</td>`;
+      libVis.map((c) => libCell(c.key)).join("") +
+      `<td class="up-acts"></td>`;
     tr.querySelector("input").addEventListener("change", (e) => {
       toggleLibFile({ id: f.id, name: f.name, size: f.size }, e.target.checked);
     });
@@ -1409,7 +1418,6 @@ function init() {
   wireUploadsLibrary();
   wireHeaderButtons();
   connectSSE();
-  $("btn-sort-reset").classList.toggle("hidden", state.sort.key == null);
   restoreWorkingSetFromSession();
   renderFiles();
   updateMergeHint();

@@ -37,12 +37,10 @@
     <div class="panel-head">
       <h2>待转换文件 <span class="small dim" id="file-count"></span></h2>
       <div class="file-tools">
-        <button id="btn-sort-reset" class="btn small subtle hidden">↺ 上传顺序</button>
         <div class="dropdown">
-          <button id="btn-columns" class="btn small subtle">列 ▾</button>
+          <button id="btn-columns" class="btn small subtle" title="选择表格中显示的元数据栏">列设置</button>
           <div id="columns-pop" class="pop hidden"></div>
         </div>
-        <button id="btn-clear-files" class="btn small subtle">清空</button>
       </div>
     </div>
 
@@ -57,6 +55,7 @@
       <div class="add-row">
         <label class="btn small" for="file-input">+ 文件</label>
         <label class="btn small" for="folder-input">+ 文件夹（递归）</label>
+        <button id="btn-clear-files" class="btn small subtle">清空列表</button>
         <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma" class="hidden">
         <input type="file" id="folder-input" webkitdirectory multiple class="hidden">
         <div id="upload-progress" class="upload-progress" aria-live="polite" aria-label="上传进度"></div>

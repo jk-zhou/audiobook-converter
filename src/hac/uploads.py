@@ -42,6 +42,41 @@ def all_uploads() -> list[Upload]:
     return list(_store.values())
 
 
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def restore_from_disk() -> int:
+    """Rebuild the upload registry from data/uploads after a restart.
+
+    Files are stored as '{upload_id}_{name}'; reconstructing Upload objects
+    with the original id keeps job source references and the browser session
+    working-set valid across restarts.
+    """
+    if not config.UPLOAD_DIR.exists():
+        return 0
+    n = 0
+    for f in sorted(config.UPLOAD_DIR.iterdir()):
+        if not f.is_file():
+            continue
+        m = re.match(r"^([0-9a-f]{12})_(.+)$", f.name)
+        if not m:
+            continue
+        uid, name = m.group(1), m.group(2)
+        if uid in _store:
+            continue
+        ext = f.suffix.lower()
+        if ext in _IMAGE_EXTS:
+            info = {"kind": "cover"}
+        else:
+            try:
+                info = probe.probe(f)
+            except probe.ProbeError:
+                info = None
+        _store[uid] = Upload(id=uid, name=name, path=f, size=f.stat().st_size, info=info)
+        n += 1
+    return n
+
+
 async def save_stream(f: UploadFile) -> Upload:
     """Chunked streaming save with size cap (fixes v1 full-in-memory bug)."""
     if config.FFMPEG_PATH is None:

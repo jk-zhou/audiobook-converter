@@ -64,8 +64,7 @@ def main():
         ok("F1: 再点反序", names_desc == list(reversed(names_asc)), str(names_desc))
         pg.click('#file-head th[data-key="name"]')
         pg.wait_for_timeout(200)
-        ok("F1: 三点回到上传顺序", pg.evaluate("!document.getElementById('btn-sort-reset')")
-           or pg.locator("#btn-sort-reset").is_hidden())
+        ok("F1: 三点回到上传顺序", pg.evaluate("state.sort.key == null"))
 
         # column visibility popover
         pg.click("#btn-columns")

@@ -550,3 +550,4 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 .lib-root { cursor: pointer; color: var(--text); }
 .lib-root:hover { color: var(--accent2); }
 .lib-root .ic { width: 14px; height: 14px; color: var(--accent); }
+.file-tools .btn.small { min-height: 32px; }

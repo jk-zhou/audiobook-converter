@@ -49,6 +49,9 @@ jm = JobManager(max_concurrent=config.MAX_CONCURRENT_JOBS)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    restored = uploads.restore_from_disk()
+    if restored:
+        logging.getLogger("hac").info("restored %d uploads from disk", restored)
     # raise fd soft limit -> hard limit so huge merges (thousands of inputs,
     # one fd each) don't die with "Too many open files". Children inherit it.
     # Done in-process because uvloop ignores preexec_fn in subprocess spawns.
