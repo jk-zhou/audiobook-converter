@@ -75,6 +75,7 @@ class JobStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"   # 服务重启时仍在进行中
 
 
 ACTIVE_STATUSES = {JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.TAGGING, JobStatus.MERGING}
@@ -108,6 +109,7 @@ class Job(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     total_duration_sec: float | None = None
+    output_deleted_at: datetime | None = None   # 产物手动清理标记（历史保留）
 
 
 class Upload(BaseModel):

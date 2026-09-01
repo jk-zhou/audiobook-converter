@@ -10,6 +10,7 @@ dependencies = [
     "sse-starlette>=2.0",
     "mutagen>=1.47",
     "pydantic>=2.6",
+    "sqlmodel>=0.0.42",
 ]
 
 [project.optional-dependencies]
