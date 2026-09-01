@@ -347,7 +347,8 @@ async def list_jobs(limit: int | None = None, offset: int = 0):
     by_id = {j.id: j for j in jm.jobs.values()}
     for j in jm.db_only_jobs():
         by_id.setdefault(j.id, j)
-    rows = sorted(by_id.values(), key=lambda j: j.created_at, reverse=True)
+    # 与 SSE job.list 一致：插入序（旧→新）；显示排序由前端处理
+    rows = list(by_id.values())
     if offset:
         rows = rows[offset:]
     if limit is not None:

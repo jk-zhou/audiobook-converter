@@ -211,10 +211,13 @@ def main():
         pg.click("#btn-clear-finished")
         deadline = time.time() + 10
         while time.time() < deadline:
-            if not jobs(pg):
+            js = jobs(pg)
+            if js and all(j.get("output_deleted_at") for j in js):
                 break
             time.sleep(0.5)
-        ok("clear-finished empties list", not jobs(pg))
+        ok("clear-finished: 产物清理但历史保留",
+           bool(js) and all(j.get("output_deleted_at") for j in js),
+           str([(j["id"], bool(j.get("output_deleted_at"))) for j in js]))
         pg.screenshot(path=str(SHOTS / "08-cleared.png"))
 
         b.close()
