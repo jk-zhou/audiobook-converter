@@ -1,16 +1,25 @@
+# Unraid 7.x 部署：Docker → Compose → Add New Stack → 粘贴本文件
+# 详见 docs/08-unraid-deploy.md
+#
+# 镜像来源：GHCR 自动构建（推荐，升级只拉镜像）。
+# 本地构建备选：注释掉 image 行、取消 build 行注释，从克隆的仓库目录构建。
 services:
-  web:
-    build: .
+  audiobook-converter:
+    # ↑↑ 把 OWNER 换成你的 GitHub 用户名/组织（或改用本地 build）
+    image: ghcr.io/OWNER/audiobook-converter:latest
+    # build: .
     container_name: audiobook-converter
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data
-      # optional: mount a host books dir for server-side import (read-only)
-      # - /mnt/nas/audiobooks:/books:ro
     environment:
-      - HAC_DATA_DIR=/app/data
+      - PUID=99            # Unraid nobody
+      - PGID=100           # Unraid users
+      - TZ=Asia/Shanghai
       - HAC_MAX_CONCURRENT=2
-      # whitelist roots for the library browser (colon-separated)
-      # - HAC_LIBRARY_ROOTS=/books:/app/data/library
+      # 书库白名单（容器内路径，冒号分隔）
+      - HAC_LIBRARY_ROOTS=/books:/app/data/library
+    volumes:
+      - /mnt/user/appdata/audiobook-converter:/app/data
+      # 有声书库目录（只读；多个目录就多挂几个）
+      - /mnt/user/audiobooks:/books:ro
     restart: unless-stopped
