@@ -515,3 +515,19 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 .joblist li[data-status="failed"] { border-left-color: var(--err); }
 .empty-jobs { padding: var(--s5) var(--s3); }
 .empty-jobs .ic { width: 24px; height: 24px; }
+
+/* ---------- Uploads table (sortable) ---------- */
+.uploads-wrap { max-height: 44vh; }
+.uploadstable thead th.nosort:last-child { text-align: right; }
+.uploadstable td.up-acts { text-align: right; white-space: nowrap; }
+.uploadstable td.up-acts .del {
+  cursor: pointer; border: 0; background: none; color: var(--dim);
+  width: 28px; height: 28px; border-radius: var(--radius-s);
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; position: relative; vertical-align: middle;
+}
+.uploadstable td.up-acts .del::after { content: ""; position: absolute; inset: -8px; }
+.uploadstable td.up-acts .del:hover:not(:disabled) { color: var(--err); background: var(--err-soft); }
+.uploadstable td.up-acts .del:disabled { opacity: .3; cursor: not-allowed; }
+.uploadstable td.up-acts .del .ic { width: 14px; height: 14px; }
+.uploadstable input[type="checkbox"] { accent-color: var(--accent); }

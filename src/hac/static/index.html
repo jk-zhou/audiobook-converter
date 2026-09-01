@@ -91,7 +91,12 @@
         <button id="up-add-selected" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 加入列表</button>
         <span class="small dim" id="up-count"></span>
       </div>
-      <ul id="uploads-list" class="filelist"></ul>
+      <div class="table-wrap uploads-wrap">
+        <table class="filetable">
+          <thead id="uploads-head"></thead>
+          <tbody id="uploads-list"></tbody>
+        </table>
+      </div>
       <p class="hint">🔒 = 正被任务使用（只读）。「⤵ 加入列表」把文件放回当前列表，无需重新上传。</p>
     </div>
   </section>

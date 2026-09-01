@@ -46,7 +46,7 @@ def main():
             "[...document.querySelectorAll('#file-head th')].map(t=>t.textContent.trim())")
         # empty metadata columns (专辑/作者/演播者 with no tags) are auto-hidden
         ok("F1: default columns (auto-hide empty)", headers ==
-           ["#", "", "文件名", "标题", "时长", "大小", ""],
+           ["#", "", "文件名", "标题", "编码", "码率", "采样率", "时长", "大小", ""],
            str(headers))
 
         # column header sort: asc → desc → back to upload order
@@ -71,8 +71,10 @@ def main():
         pg.click("#btn-columns")
         pg.click('#columns-pop label:has-text("专辑") input')
         pg.wait_for_timeout(200)
-        ok("F1: 取消专辑列", not pg.evaluate("state.columns.album"))
+        ok("F1: 勾选显示专辑列", pg.evaluate("state.columns.album"))
         pg.click('#columns-pop label:has-text("专辑") input')
+        pg.wait_for_timeout(200)
+        ok("F1: 再点取消专辑列", not pg.evaluate("state.columns.album"))
         pg.evaluate("document.body.click()")
 
         # drag reorder: first row → last
@@ -140,7 +142,7 @@ def main():
         pg.wait_for_timeout(1500)
         pg.click('.tab[data-tab="uploads"]')
         pg.wait_for_function(
-            "document.querySelectorAll('#uploads-list li').length >= 1", timeout=30000)
+            "document.querySelectorAll('#uploads-list tr').length >= 1", timeout=30000)
         locked = pg.evaluate("state.uploadsAll.filter(u=>u.referenced).length")
         ok("已上传 tab：被任务引用的条目标记 🔒", locked >= 1, f"locked={locked}")
         pg.click("#up-del-all")   # 🔒 条目应被跳过

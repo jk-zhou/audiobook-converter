@@ -12,19 +12,24 @@ const state = {
   jobs: {},
   coverUploadId: null,
   sort: { key: null, dir: 1 },     // null key = 上传顺序
-  columns: { name: true, title: true, track: true, album: true, artist: true,
-             composer: true, duration: true, size: true, mtime: false },
+  columns: { name: true, track: true, title: true, codec: true, bitrate: true,
+             srate: true, duration: true, size: true,
+             album: false, artist: false, composer: false, mtime: false },
+  upSort: { key: null, dir: 1 },   // 已上传文件表排序
 };
 
 const COLUMNS = [
   { key: "name",     label: "文件名" },
+  { key: "track",    label: "章节" },
   { key: "title",    label: "标题" },
-  { key: "track",    label: "章节/编号" },
-  { key: "album",    label: "专辑" },
-  { key: "artist",   label: "作者" },
-  { key: "composer", label: "演播者" },
+  { key: "codec",    label: "编码" },
+  { key: "bitrate",  label: "码率" },
+  { key: "srate",    label: "采样率" },
   { key: "duration", label: "时长" },
   { key: "size",     label: "大小" },
+  { key: "album",    label: "专辑", def: false },
+  { key: "artist",   label: "作者", def: false },
+  { key: "composer", label: "演播者", def: false },
   { key: "mtime",    label: "修改时间", def: false },
 ];
 
@@ -49,6 +54,9 @@ const fmtSize = (b) => {
   if (b > 1e3) return Math.round(b / 1e3) + " KB";
   return b + " B";
 };
+
+const fmtKbps = (b) => (b ? Math.max(1, Math.round(b / 1000)) + "k" : "");
+const fmtHz = (h) => (h ? Math.round(h / 1000) + " kHz" : "");
 
 const fmtDur = (s) => {
   if (!s) return "";
@@ -297,6 +305,9 @@ function rowMeta(u) {
     artist: pick(tags.artist, lib.artist),
     composer: pick(tags.composer, lib.composer),
     duration: u.info && u.info.duration ? u.info.duration : (lib.duration || null),
+    codec: (u.info && u.info.codec) || lib.codec || null,
+    bitrate: (u.info && u.info.bitrate) || lib.bitrate || null,
+    srate: (u.info && u.info.sample_rate) || lib.sample_rate || null,
   };
 }
 
@@ -344,7 +355,7 @@ function sortUploads() {
     else if (key === "mtime") d = (x.u.lastModified || 0) - (y.u.lastModified || 0);
     else {
       const xv = x.m[key], yv = y.m[key];
-      if (key === "track" || key === "duration") {
+      if (key === "track" || key === "duration" || key === "bitrate" || key === "srate") {
         const xn = xv == null, yn = yv == null;
         if (xn && yn) d = naturalCompare(x.u.name, y.u.name);
         else if (xn) return 1;
@@ -450,6 +461,9 @@ function renderFiles() {
       if (c.key === "name")
         return `<td class="name-cell" title="${escapeHtml(u.name)}">${icon("music")} ${escapeHtml(u.name)}</td>`;
       if (c.key === "duration") return `<td>${fmtDur(m.duration)}</td>`;
+      if (c.key === "codec") return `<td class="mono">${escapeHtml(m.codec ?? "")}</td>`;
+      if (c.key === "bitrate") return `<td>${fmtKbps(m.bitrate)}</td>`;
+      if (c.key === "srate") return `<td>${fmtHz(m.srate)}</td>`;
       if (c.key === "size") return `<td>${fmtSize(u.size)}</td>`;
       if (c.key === "mtime")
         return `<td>${u.lastModified ? new Date(u.lastModified).toLocaleString() : ""}</td>`;
@@ -568,33 +582,113 @@ async function refreshUploadsLibrary() {
   } catch (e) { /* unreachable */ }
 }
 
+const UP_COLUMNS = [
+  { key: "name",    label: "文件名" },
+  { key: "ext",     label: "类型" },
+  { key: "codec",   label: "编码" },
+  { key: "bitrate", label: "码率" },
+  { key: "srate",   label: "采样率" },
+  { key: "duration", label: "时长" },
+  { key: "size",    label: "大小" },
+];
+
+function upRowMeta(u) {
+  const info = u.info || {};
+  return {
+    name: u.name,
+    ext: (u.name.includes(".") ? u.name.split(".").pop() : "").toUpperCase(),
+    codec: info.codec || null,
+    bitrate: info.bitrate || null,
+    srate: info.sample_rate || null,
+    duration: info.duration || null,
+    size: u.size,
+  };
+}
+
+function sortUploadsAll() {
+  const { key, dir } = state.upSort;
+  if (!key) return;   // 服务器注册顺序
+  const keyed = state.uploadsAll.map((u, i) => ({ u, m: upRowMeta(u), i }));
+  keyed.sort((x, y) => {
+    let d = 0;
+    if (key === "name") d = naturalCompare(x.u.name, y.u.name);
+    else if (key === "size" || key === "bitrate" || key === "srate" || key === "duration") {
+      const xn = x.m[key] == null, yn = y.m[key] == null;
+      if (xn && yn) d = naturalCompare(x.u.name, y.u.name);
+      else if (xn) return 1;
+      else if (yn) return -1;
+      else d = x.m[key] - y.m[key];
+    } else {
+      const xs = String(x.m[key] ?? ""), ys = String(y.m[key] ?? "");
+      if (!xs && !ys) d = naturalCompare(x.u.name, y.u.name);
+      else if (!xs) return 1;
+      else if (!ys) return -1;
+      else d = xs.localeCompare(ys);
+    }
+    return (d * dir) || (x.i - y.i);
+  });
+  state.uploadsAll = keyed.map((k) => k.u);
+}
+
 function renderUploadsLibrary() {
-  const ul = $("uploads-list");
-  if (!ul) return;
+  const tbody = $("uploads-list");
+  const head = $("uploads-head");
+  if (!tbody) return;
   const rows = state.uploadsAll;
   const cnt = $("up-count");
   if (cnt) cnt.textContent = `共 ${rows.length} 个文件`;
-  ul.innerHTML = "";
+
+  head.innerHTML = `<th class="nosort"></th>` +
+    UP_COLUMNS.map((c) => {
+      let arrow = "", as = "";
+      if (state.upSort.key === c.key) {
+        arrow = state.upSort.dir === 1 ? " ▲" : " ▼";
+        as = ` aria-sort="${state.upSort.dir === 1 ? "ascending" : "descending"}"`;
+      }
+      return `<th data-ukey="${c.key}"${as}>${c.label}${arrow}</th>`;
+    }).join("") +
+    `<th class="nosort">操作</th>`;
+
+  head.querySelectorAll("th[data-ukey]").forEach((th) => {
+    th.onclick = () => {
+      const k = th.dataset.ukey;
+      if (state.upSort.key === k) {
+        if (state.upSort.dir === 1) state.upSort.dir = -1;
+        else state.upSort = { key: null, dir: 1 };
+      } else state.upSort = { key: k, dir: 1 };
+      renderUploadsLibrary();
+    };
+  });
+
+  sortUploadsAll();
+  tbody.innerHTML = "";
   if (!rows.length) {
-    ul.innerHTML = `<li class="empty">暂无已上传文件</li>`;
+    tbody.innerHTML = `<tr><td colspan="${UP_COLUMNS.length + 2}" class="empty">暂无已上传文件</td></tr>`;
     return;
   }
   for (const u of rows) {
     const locked = isReferenced(u);
     const isCover = u.info && u.info.kind === "cover";
-    const li = document.createElement("li");
-    li.innerHTML =
-      `<input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""}>` +
-      `<span class="name">${icon(isCover ? "library" : "music")} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</span>` +
-      `<span class="meta">${fmtSize(u.size)}</span>` +
+    const m = upRowMeta(u);
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td><input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""} aria-label="选择 ${escapeHtml(u.name)}"></td>` +
+      `<td class="name-cell" title="${escapeHtml(u.name)}">${icon(isCover ? "library" : "music")} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</td>` +
+      `<td>${escapeHtml(m.ext)}</td>` +
+      `<td class="mono">${escapeHtml(m.codec ?? "")}</td>` +
+      `<td>${fmtKbps(m.bitrate)}</td>` +
+      `<td>${fmtHz(m.srate)}</td>` +
+      `<td>${fmtDur(m.duration)}</td>` +
+      `<td>${fmtSize(u.size)}</td>` +
+      `<td class="up-acts">` +
       (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">${icon("download")} 加入列表</button>`) +
-      `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" aria-label="删除 ${escapeHtml(u.name)}" ${locked ? "disabled" : ""}>${icon("x")}</button>`;
-    ul.appendChild(li);
+      `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" aria-label="删除 ${escapeHtml(u.name)}" ${locked ? "disabled" : ""}>${icon("x")}</button></td>`;
+    tbody.appendChild(tr);
   }
-  ul.querySelectorAll("[data-add]").forEach((b) => {
+  tbody.querySelectorAll("[data-add]").forEach((b) => {
     b.onclick = () => addToWorkingSet(b.dataset.add);
   });
-  ul.querySelectorAll("[data-del]").forEach((b) => {
+  tbody.querySelectorAll("[data-del]").forEach((b) => {
     b.onclick = async () => {
       const res = await fetch(`/api/uploads/${b.dataset.del}`, { method: "DELETE" });
       if (res.status === 409) {

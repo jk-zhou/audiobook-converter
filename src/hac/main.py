@@ -180,6 +180,9 @@ async def library_probe(req: LibraryProbeRequest):
                 "artist": tags.get("artist"),
                 "composer": tags.get("composer"),
                 "duration": info.get("duration"),
+                "codec": info.get("codec"),
+                "bitrate": info.get("bitrate"),
+                "sample_rate": info.get("sample_rate"),
             }
         except probe.ProbeError:
             out[str(p)] = {"title": None, "track": None, "album": None,
