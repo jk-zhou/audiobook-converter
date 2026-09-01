@@ -57,6 +57,7 @@
 | [docs/02-tech-spec.md](docs/02-tech-spec.md) | 技术规格：数据模型、API 设计、FFmpeg 参数映射、SSE 协议 |
 | [docs/03-roadmap.md](docs/03-roadmap.md) | 路线图：MVP / v0.2 / v0.3 范围 + 已知未做项 |
 | [docs/04-verification.md](docs/04-verification.md) | 验收标准：端到端测试 + 主观听感参考 |
+| [docs/06-handoff.md](docs/06-handoff.md) | **交接文档**：进度/技术坑/未完成事项（新接手者先读这个） |
 
 ---
 
