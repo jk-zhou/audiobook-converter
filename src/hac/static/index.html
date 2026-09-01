@@ -35,7 +35,7 @@
   <!-- 1 · FILES (full width working area) -->
   <section class="panel files-panel" id="col-files">
     <div class="panel-head">
-      <h2>文件 <span class="small dim" id="file-count"></span></h2>
+      <h2>待转换文件 <span class="small dim" id="file-count"></span></h2>
       <div class="file-tools">
         <button id="btn-sort-reset" class="btn small subtle hidden">↺ 上传顺序</button>
         <div class="dropdown">
@@ -145,12 +145,12 @@
         <legend><svg class="ic" aria-hidden="true"><use href="#i-music"/></svg> 合并为一个 M4B（有声书）</legend>
         <label class="field checkbox">
           <input type="checkbox" id="merge-on">
-          按列表顺序合并为一个 .m4b（采用下方编码设置，内嵌章节）
+          按列表顺序合并为一个 .m4b（采用以上编码设置，内嵌章节）
         </label>
         <div id="merge-fields" class="hidden">
           <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
           <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
-          <label class="field">演播者 <input id="merge-composer" placeholder="可选，写入手 ©wrt"></label>
+          <label class="field">演播者 <input id="merge-composer" placeholder="可选（写入 ©wrt 演播者标签）"></label>
           <label class="field">封面
           <span class="cover-row">
             <label class="btn small" for="merge-cover">选择封面图片</label>
@@ -178,7 +178,7 @@
         <label class="field meta-dup">标题 <input id="meta-title"></label>
         <label class="field meta-dup">作者 <input id="meta-artist"></label>
         <label class="field meta-dup">专辑 <input id="meta-album"></label>
-        <label class="field meta-dup">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
+        <label class="field meta-dup">演播者 <input id="meta-composer" placeholder="可选（写入 ©wrt 演播者标签）"></label>
       </fieldset>
 
       <button id="btn-start" class="btn primary sticky-cta"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> 开始转换</button>

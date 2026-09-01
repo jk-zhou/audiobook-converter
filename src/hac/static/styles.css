@@ -125,8 +125,10 @@ header h1 {
 }
 .panel-head {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: var(--s3);
+  gap: var(--s3); margin-bottom: var(--s3);
 }
+.file-tools { display: flex; align-items: center; gap: var(--s1); flex: none; }
+.file-tools .dropdown { position: relative; }
 .files-panel { min-height: 420px; }
 .files-panel .table-wrap { max-height: calc(100vh - 340px); min-height: 300px; }
 

@@ -796,7 +796,7 @@ function updateMergeHint() {
   const mergeOn = $("merge-on").checked;
   const errCount = renderMergeHints();
   $("merge-hint").textContent = mergeOn
-    ? `将按列表顺序合并 ${n} 个文件为一个 .m4b（采用下方编码设置）；章节名取各文件标题标签，缺省用文件名` +
+    ? `将按列表顺序合并 ${n} 个文件为一个 .m4b（采用以上编码设置）；章节名取各文件标题标签，缺省用文件名` +
       (n < 2 ? "（⚠ 至少 2 个文件）" : "")
     : `将为 ${n} 个文件各创建一个转码任务`;
   $("btn-start").disabled =
