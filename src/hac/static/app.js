@@ -104,6 +104,8 @@ function restoreSession() {
   if (s.mergeOn != null) {
     $("merge-on").checked = s.mergeOn;
     $("merge-fields").classList.toggle("hidden", !s.mergeOn);
+    document.querySelectorAll(".meta-dup").forEach((el) =>
+      el.classList.toggle("hidden", s.mergeOn));
   }
   setv("merge-title", s.mergeTitle); setv("merge-artist", s.mergeArtist);
   setv("merge-composer", s.mergeComposer);
@@ -150,12 +152,35 @@ async function loadPresets() {
     o.disabled = !p.enabled;
     sel.appendChild(o);
   }
+  renderPresetSummary();
+}
+
+function presetSummaryText(p) {
+  const st = p.settings || {};
+  const bits = [];
+  if (st.format) bits.push(String(st.format).toUpperCase());
+  if (st.profile) bits.push(st.profile.toUpperCase());
+  if (st.bitrate) bits.push(st.bitrate);
+  if (st.samplerate) bits.push(st.samplerate + " Hz");
+  if (st.channels === 1) bits.push("单声道");
+  else if (st.channels === 2) bits.push("立体声");
+  return bits.join(" · ");
+}
+
+function renderPresetSummary() {
+  const el = $("preset-summary");
+  if (!el) return;
+  const p = state.presets.find((x) => x.id === $("preset").value);
+  if (!p) { el.hidden = true; el.textContent = ""; return; }
+  el.textContent = presetSummaryText(p);
+  el.hidden = false;
 }
 
 function applyPreset(id) {
   $("preset-hint").textContent = "";
   const p = state.presets.find((x) => x.id === id);
-  if (!p) return;
+  if (!p) { renderPresetSummary(); return; }
+  renderPresetSummary();
   $("format").value = p.settings.format;
   $("codec").value = p.settings.codec;
   $("bitrate").value = p.settings.bitrate || "";
@@ -1044,7 +1069,12 @@ function populateFormatCodec() {
 }
 
 function wireSettings() {
-  $("preset").onchange = (e) => { applyPreset(e.target.value); updateMergeHint(); saveSession(); };
+  $("preset").onchange = (e) => {
+    applyPreset(e.target.value);
+    const adv = $("adv-box");
+    if (adv) adv.open = e.target.value === "";
+    updateMergeHint(); saveSession();
+  };
   ["format", "codec", "bitrate", "samplerate", "channels"].forEach((id) =>
     $(id).addEventListener("change", () => {
       $("preset").value = "";
@@ -1053,6 +1083,8 @@ function wireSettings() {
     }));
   $("merge-on").onchange = (e) => {
     $("merge-fields").classList.toggle("hidden", !e.target.checked);
+    document.querySelectorAll(".meta-dup").forEach((el) =>
+      el.classList.toggle("hidden", e.target.checked));
     updateMergeHint();
     saveSession();
   };
@@ -1064,6 +1096,10 @@ function wireSettings() {
     $(id).addEventListener("change", saveSession);
   });
   $("normalize").addEventListener("change", saveSession);
+  $("merge-cover").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    $("cover-name").textContent = f ? f.name : "未选择（可自动提取内嵌封面）";
+  });
   $("title-source").onchange = (e) => {
     $("title-pattern-row").classList.toggle("hidden", e.target.value !== "pattern");
     $("meta-title").disabled = e.target.value !== "inherit";

@@ -130,6 +130,7 @@ def main():
         pg.wait_for_function("state.uploads.some(u=>u.name.includes('long2'))",
                              timeout=60000)
         pg.select_option("#preset", "audiobook_opus_48k")
+        pg.evaluate("document.getElementById('adv-box').open = true")
         pg.check("#normalize")
         _, base_ln = finished_count(pg)
         pg.click("#btn-start")

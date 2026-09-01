@@ -426,3 +426,32 @@ fieldset legend {
 }
 .filelist .icon .ic { width: 16px; height: 16px; color: var(--accent); }
 legend .ic { width: 14px; height: 14px; color: var(--accent); }
+
+/* ---------- Settings progressive disclosure (Task 4) ---------- */
+.preset-field select { min-height: 40px; font-size: var(--fs-md); }
+.preset-summary {
+  display: inline-block; margin-top: 6px; padding: 3px 10px;
+  font-size: var(--fs-xs); color: var(--accent2);
+  background: var(--accent-soft); border-radius: 99px;
+}
+details.adv {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  margin: var(--s3) 0; background: var(--panel2);
+}
+details.adv summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; font-size: var(--fs-sm); font-weight: 600; color: var(--text2);
+  min-height: 36px;
+}
+details.adv summary::-webkit-details-marker { display: none; }
+details.adv summary:hover { color: var(--text); }
+details.adv summary .ic { transition: transform .15s ease; }
+details.adv[open] summary .ic { transform: rotate(180deg); }
+details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
+.meta-dup.hidden { display: none !important; }
+.cover-row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+#merge-cover.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}

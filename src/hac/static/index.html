@@ -96,10 +96,14 @@
     <!-- 转换设置（右侧栏） -->
     <section class="panel" id="col-settings">
       <h2>转换设置</h2>
-      <label class="field">预设
+      <label class="field preset-field">预设
         <select id="preset"><option value="">— 自定义 —</option></select>
+        <span id="preset-summary" class="preset-summary" hidden></span>
         <span id="preset-hint" class="hint"></span>
       </label>
+      <details class="adv" id="adv-box">
+        <summary><svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg> 高级参数</summary>
+        <div class="adv-body">
       <label class="field">格式 <select id="format"></select></label>
       <label class="field">编码器 <select id="codec"></select>
         <span class="err-hint" id="err-codec"></span></label>
@@ -130,6 +134,8 @@
       <label class="field checkbox">
         <input type="checkbox" id="normalize"> 响度归一化 loudnorm（-20 LUFS）
       </label>
+        </div>
+      </details>
 
       <fieldset id="merge-box">
         <legend><svg class="ic" aria-hidden="true"><use href="#i-music"/></svg> 合并为一个 M4B（有声书）</legend>
@@ -141,7 +147,13 @@
           <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
           <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
           <label class="field">演播者 <input id="merge-composer" placeholder="可选，写入手 ©wrt"></label>
-          <label class="field">封面 <input type="file" id="merge-cover" accept="image/jpeg,image/png"></label>
+          <label class="field">封面
+          <span class="cover-row">
+            <label class="btn small" for="merge-cover">选择封面图片</label>
+            <span class="hint" id="cover-name">未选择（可自动提取内嵌封面）</span>
+          </span>
+          <input type="file" id="merge-cover" accept="image/jpeg,image/png" class="visually-hidden">
+        </label>
           <p class="hint" id="merge-hint"></p>
         </div>
       </fieldset>
@@ -159,10 +171,10 @@
           <input id="title-pattern" placeholder="第${TrackNum:3}集">
           <span class="hint">${TrackNum} = 章节号；${TrackNum:3} 补零。源无 track 时用列表顺序。</span>
         </label>
-        <label class="field">标题 <input id="meta-title"></label>
-        <label class="field">作者 <input id="meta-artist"></label>
-        <label class="field">专辑 <input id="meta-album"></label>
-        <label class="field">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
+        <label class="field meta-dup">标题 <input id="meta-title"></label>
+        <label class="field meta-dup">作者 <input id="meta-artist"></label>
+        <label class="field meta-dup">专辑 <input id="meta-album"></label>
+        <label class="field meta-dup">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
       </fieldset>
 
       <button id="btn-start" class="btn primary sticky-cta"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> 开始转换</button>
