@@ -45,9 +45,9 @@ Stage 2 — runtime (python:3.11-slim)
 
 ```sh
 if [ "$(id -u)" = "0" ] && [ -n "$PUID" ] && [ "$PUID" != "0" ]; then
-  # 创建组/用户（若 gid/uid 已被占用则复用）
-  addgroup -g "$PGID" hac 2>/dev/null || true
-  adduser -u "$PUID" -G hac -D hac 2>/dev/null || true  # 按镜像基础发行版调整
+  # 创建组/用户（若 gid/uid 已被占用则复用；debian 基础镜像用 groupadd/useradd）
+  getent group "$PGID" >/dev/null || groupadd -g "$PGID" hac
+  getent passwd "$PUID" >/dev/null || useradd -u "$PUID" -g "$PGID" -M -s /usr/sbin/nologin hac
   # 仅当属主不匹配才递归 chown（大目录防重复全量 chown），从不触碰 /books
   for d in /app/data; do
     [ -d "$d" ] && [ "$(stat -c %u "$d")" != "$PUID" ] && chown -R "$PUID:$PGID" "$d"
