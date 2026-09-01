@@ -468,12 +468,20 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 }
 
 /* ---------- File table enhancements (Task 5) ---------- */
-.filetable td.pos, .filetable td[colspan] { color: var(--accent); }
+.filetable td.pos { color: var(--accent); }
 .filetable thead th[aria-sort] { color: var(--accent2); }
 .empty {
   display: flex; flex-direction: column; align-items: center; gap: var(--s3);
   padding: var(--s6) var(--s4);
 }
+/* table cells: keep table-cell layout, center content (flex would collapse td) */
+.filetable td.empty {
+  display: table-cell !important;
+  text-align: center !important;
+  padding: var(--s6) var(--s4);
+}
+.filetable td.empty .ic { width: 24px; height: 24px; display: block; margin: 0 auto var(--s2); }
+.filetable td.empty p { margin: 0; }
 .empty .ic { width: 32px; height: 32px; color: var(--dim); opacity: .7; }
 .empty p { margin: 0; }
 .empty-cta-btn { width: auto; min-width: 160px; margin-top: var(--s1); pointer-events: auto; }
