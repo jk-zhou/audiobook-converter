@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import tempfile
@@ -341,8 +342,17 @@ async def create_job(req: JobCreate):
 
 
 @app.get("/api/jobs")
-async def list_jobs():
-    return [j.model_dump(mode="json") for j in jm.jobs.values()]
+async def list_jobs(limit: int | None = None, offset: int = 0):
+    # 内存运行态 ∪ DB 历史（clear_finished 后内存移除但历史保留）
+    by_id = {j.id: j for j in jm.jobs.values()}
+    for j in jm.db_only_jobs():
+        by_id.setdefault(j.id, j)
+    rows = sorted(by_id.values(), key=lambda j: j.created_at, reverse=True)
+    if offset:
+        rows = rows[offset:]
+    if limit is not None:
+        rows = rows[:limit]
+    return [j.model_dump(mode="json") for j in rows]
 
 
 @app.get("/api/jobs/{job_id}")
@@ -363,6 +373,66 @@ async def retry_job(job_id: str):
 @app.post("/api/jobs/cancel-all")
 async def cancel_all_jobs():
     return {"ok": True, "cancelled": await jm.cancel_all()}
+
+
+@app.post("/api/jobs/clear-finished")
+async def clear_finished_jobs():
+    """清理产物：删除输出文件、历史条目永久保留。"""
+    return {"ok": True, "cleaned": jm.clear_finished()}
+
+
+@app.delete("/api/jobs/{job_id}/output")
+async def delete_job_output(job_id: str):
+    if not jm.jobs.get(job_id):
+        raise HTTPException(404, "job not found")
+    jm.delete_output(job_id)
+    return {"ok": True}
+
+
+# ---------- settings & session (server-side persistence) ----------
+
+@app.get("/api/settings")
+async def get_settings():
+    from . import db as _db
+    return _db.kv_all()
+
+
+@app.put("/api/settings")
+async def put_setting(req: dict):
+    key, value = req.get("key"), req.get("value")
+    if not key or value is None:
+        raise HTTPException(400, "key and value required")
+    if key == "schema_version":
+        raise HTTPException(400, "reserved key")
+    from . import db as _db
+    _db.kv_set(str(key), value if isinstance(value, str) else json.dumps(value, ensure_ascii=False))
+    return {"ok": True}
+
+
+@app.get("/api/session")
+async def get_session():
+    from . import db as _db
+    raw = _db.session_get()
+    if raw is None:
+        raise HTTPException(404, "no session")
+    return json.loads(raw)
+
+
+@app.put("/api/session")
+async def put_session(req: dict):
+    from . import db as _db
+    _db.session_set(json.dumps(req, ensure_ascii=False))
+    return {"ok": True}
+
+
+@app.post("/api/settings/import")
+async def import_session(req: dict):
+    """One-time localStorage migration: only accepted when server session empty."""
+    from . import db as _db
+    if _db.session_exists():
+        raise HTTPException(409, "session already exists")
+    _db.session_set(json.dumps(req, ensure_ascii=False))
+    return {"ok": True}
 
 
 @app.post("/api/jobs/clear-finished")
