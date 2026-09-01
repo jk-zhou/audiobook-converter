@@ -8,6 +8,22 @@
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 006.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a.75.75 0 001.13.65l10.5-6.5a.75.75 0 000-1.3L9.13 4.85A.75.75 0 008 5.5z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 9v4m0 4h.01M10.3 4.2L2.8 17a2 2 0 001.7 3h15a2 2 0 001.7-3L13.7 4.2a2 2 0 00-3.4 0z"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0l-6 6m6-6l6 6"/></symbol>
+  <symbol id="i-arrow-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m0 0l6-6m-6 6l-6-6"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z"/></symbol>
+</svg>
 <header>
   <h1><img src="/static/favicon.svg" class="logo" alt=""> Audiobook Converter</h1>
   <div class="header-actions">
@@ -57,7 +73,7 @@
 
     <div id="panel-library" class="tabpane hidden">
       <div class="lib-bar">
-        <button id="lib-up" class="btn small subtle">⬆ 上级</button>
+        <button id="lib-up" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-arrow-up"/></svg> 上级</button>
         <span id="lib-path" class="small"></span>
       </div>
       <ul id="lib-list" class="filelist"></ul>
@@ -66,9 +82,9 @@
 
     <div id="panel-uploads" class="tabpane hidden">
       <div class="lib-bar">
-        <button id="up-del-selected" class="btn small subtle">🗑 删除所选</button>
-        <button id="up-del-all" class="btn small subtle">🗑 删除全部未使用</button>
-        <button id="up-add-selected" class="btn small">⤵ 加入列表</button>
+        <button id="up-del-selected" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 删除所选</button>
+        <button id="up-del-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 删除全部未使用</button>
+        <button id="up-add-selected" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 加入列表</button>
         <span class="small dim" id="up-count"></span>
       </div>
       <ul id="uploads-list" class="filelist"></ul>
@@ -116,7 +132,7 @@
       </label>
 
       <fieldset id="merge-box">
-        <legend>📚 合并为一个 M4B（有声书）</legend>
+        <legend><svg class="ic" aria-hidden="true"><use href="#i-music"/></svg> 合并为一个 M4B（有声书）</legend>
         <label class="field checkbox">
           <input type="checkbox" id="merge-on">
           按列表顺序合并为一个 .m4b（采用下方编码设置，内嵌章节）
@@ -149,16 +165,16 @@
         <label class="field">演播者 <input id="meta-composer" placeholder="可选，写入手 ©wrt"></label>
       </fieldset>
 
-      <button id="btn-start" class="btn primary">▶ 开始转换</button>
+      <button id="btn-start" class="btn primary"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> 开始转换</button>
     </section>
 
     <!-- 3 · JOBS -->
     <section class="panel" id="col-jobs">
       <h2>3 · 任务</h2>
       <div class="jobbar">
-        <button id="btn-zip" class="btn small">⬇ 打包 zip</button>
-        <button id="btn-cancel-all" class="btn small subtle">✕ 取消全部</button>
-        <button id="btn-clear-finished" class="btn small subtle">🧹 清空已完成</button>
+        <button id="btn-zip" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 打包 zip</button>
+        <button id="btn-cancel-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 取消全部</button>
+        <button id="btn-clear-finished" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 清空已完成</button>
       </div>
       <ul id="job-list" class="joblist"></ul>
     </section>

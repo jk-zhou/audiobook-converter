@@ -387,3 +387,20 @@ fieldset legend {
     animation: none !important;
   }
 }
+
+/* ---------- Icons ---------- */
+.ic {
+  width: 16px; height: 16px; flex: none;
+  display: inline-block; vertical-align: -3px;
+}
+.btn .ic, .linklike .ic, .joberr .ic, .verify .ic { width: 15px; height: 15px; }
+.linklike .ic { transition: transform .15s ease; }
+.joberr { display: flex; align-items: baseline; gap: 6px; }
+.joberr .ic { flex: none; color: var(--err); }
+.verify { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.handle .ic { width: 14px; height: 14px; }
+.name-cell .ic, .filelist .name .ic, .job-name .ic {
+  width: 14px; height: 14px; color: var(--dim);
+}
+.filelist .icon .ic { width: 16px; height: 16px; color: var(--accent); }
+legend .ic { width: 14px; height: 14px; color: var(--accent); }

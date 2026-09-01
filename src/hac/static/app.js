@@ -36,6 +36,9 @@ const DEFAULT_CODEC = {
   ogg: "libvorbis", flac: "flac", wav: "pcm_s16le",
 };
 
+const icon = (name, cls = "ic") =>
+  `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
 const escapeHtml = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -391,16 +394,16 @@ function renderFiles() {
     tr.dataset.idx = i;
     const cell = (c) => {
       if (c.key === "name")
-        return `<td class="name-cell" title="${escapeHtml(u.name)}">🎵 ${escapeHtml(u.name)}</td>`;
+        return `<td class="name-cell" title="${escapeHtml(u.name)}">${icon("music")} ${escapeHtml(u.name)}</td>`;
       if (c.key === "duration") return `<td>${fmtDur(m.duration)}</td>`;
       if (c.key === "size") return `<td>${fmtSize(u.size)}</td>`;
       if (c.key === "mtime")
         return `<td>${u.lastModified ? new Date(u.lastModified).toLocaleString() : ""}</td>`;
       return `<td title="${escapeHtml(m[c.key] ?? "")}">${escapeHtml(m[c.key] ?? "")}</td>`;
     };
-    tr.innerHTML = `<td class="pos">${i + 1}</td><td class="handle">⠿</td>` +
+    tr.innerHTML = `<td class="pos">${i + 1}</td><td class="handle">${icon("grip")}</td>` +
       vis.map(cell).join("") +
-      `<td><button class="del" title="移除">✕</button></td>`;
+      `<td><button class="del" title="移除" aria-label="从列表移除 ${escapeHtml(u.name)}">${icon("x")}</button></td>`;
     tr.querySelector(".del").onclick = () => {
       state.uploads = state.uploads.filter((x) => x.id !== u.id);
       if (state.coverUploadId === u.id) state.coverUploadId = null;
@@ -510,10 +513,10 @@ function renderUploadsLibrary() {
     const li = document.createElement("li");
     li.innerHTML =
       `<input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""}>` +
-      `<span class="name">${isCover ? "🖼" : "🎵"} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</span>` +
+      `<span class="name">${icon(isCover ? "library" : "music")} ${escapeHtml(u.name)}${locked ? " 🔒" : ""}</span>` +
       `<span class="meta">${fmtSize(u.size)}</span>` +
-      (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">⤵ 加入列表</button>`) +
-      `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" ${locked ? "disabled" : ""}>✕</button>`;
+      (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">${icon("download")} 加入列表</button>`) +
+      `<button class="del" data-del="${escapeHtml(u.id)}" title="删除" aria-label="删除 ${escapeHtml(u.name)}" ${locked ? "disabled" : ""}>${icon("x")}</button>`;
     ul.appendChild(li);
   }
   ul.querySelectorAll("[data-add]").forEach((b) => {
@@ -638,7 +641,7 @@ async function libLoad(path) {
       ul.innerHTML = "";
       for (const r of state.libRoots) {
         const li = document.createElement("li");
-        li.innerHTML = `<span class="icon">📚</span><span class="name" style="cursor:pointer">${escapeHtml(r.name)}/</span>`;
+        li.innerHTML = `<span class="icon">${icon("library")}</span><span class="name" style="cursor:pointer">${escapeHtml(r.name)}/</span>`;
         li.onclick = () => libLoad(r.path);
         ul.appendChild(li);
       }
@@ -658,7 +661,7 @@ async function libLoad(path) {
       ul.innerHTML = `<li class="empty">空目录（无音频文件）</li>`;
     for (const d of data.dirs) {
       const li = document.createElement("li");
-      li.innerHTML = `<span class="icon">📂</span><span class="name" style="cursor:pointer">${escapeHtml(d.name)}/</span>`;
+      li.innerHTML = `<span class="icon">${icon("folder")}</span><span class="name" style="cursor:pointer">${escapeHtml(d.name)}/</span>`;
       li.onclick = () => libLoad(d.path);
       ul.appendChild(li);
     }
@@ -667,7 +670,7 @@ async function libLoad(path) {
       const li = document.createElement("li");
       li.innerHTML = `<input type="checkbox" class="libpick" data-libid="${escapeHtml(f.id)}" ` +
         `data-libname="${escapeHtml(f.name)}" ${inList ? "checked" : ""}>` +
-        `<span class="name">🎵 ${escapeHtml(f.name)}</span><span class="meta">${fmtSize(f.size)}</span>`;
+        `<span class="name">${icon("music")} ${escapeHtml(f.name)}</span><span class="meta">${fmtSize(f.size)}</span>`;
       li.querySelector("input").addEventListener("change", (e) => {
         toggleLibFile({ id: f.id, name: f.name, size: f.size }, e.target.checked);
       });
@@ -781,19 +784,19 @@ function jobCardHTML(j) {
   let html =
     `<div class="job-top">` +
       `<span class="job-name" title="${escapeHtml(j.output_filename)}">` +
-      `${j.mode === "merge" ? "📚 " : ""}${escapeHtml(j.output_filename)}</span>` +
+      `${j.mode === "merge" ? icon("music") + " " : ""}${escapeHtml(j.output_filename)}</span>` +
       `<span class="badge ${j.status}">${STATUS_TXT[j.status] || j.status}</span>` +
     `</div>` +
     `<div class="pbar"><div style="width:${p}%"></div></div>` +
     `<div class="small pct-text" style="color:var(--dim)">${p}% · ${escapeHtml(paramSummary(j))}</div>`;
   if (j.verify) {
     const v = j.verify;
-    html += `<div class="verify">✓ <b>${escapeHtml(v.codec)}</b> · <b>${Math.round((v.bitrate || 0) / 1000)}k</b>` +
+    html += `<div class="verify">${icon("check")} <b>${escapeHtml(v.codec)}</b> · <b>${Math.round((v.bitrate || 0) / 1000)}k</b>` +
       ` · ${v.sample_rate}Hz · ${v.channels}ch` +
       (v.savings_pct != null ? ` · 体积省 <b>${v.savings_pct}%</b>（${fmtSize(v.output_size)} / 源 ${fmtSize(v.source_size)}）` : "") +
       `</div>`;
   }
-  if (j.error) html += `<div class="joberr">✗ ${escapeHtml(j.error)}</div>`;
+  if (j.error) html += `<div class="joberr">${icon("alert")} ${escapeHtml(j.error)}</div>`;
 
   // 源文件清单（默认折叠）+ 显式删除源文件
   const srcNames = (j.source_names && j.source_names.length)
@@ -803,19 +806,19 @@ function jobCardHTML(j) {
     && !j._srcDeleted
     && j.source_ids.some((sid) => !sid.startsWith("lib:"));
   html += `<div class="job-src">` +
-    `<button class="linklike" data-act="togglesrc" data-id="${j.id}">▸ 源文件（${srcNames.length}）</button>` +
-    (canDelSources ? `<button class="linklike danger" data-act="delsrc" data-id="${j.id}">🗑 删除源文件</button>` : "") +
+    `<button class="linklike" data-act="togglesrc" data-id="${j.id}">${icon("chevron-down")} 源文件（${srcNames.length}）</button>` +
+    (canDelSources ? `<button class="linklike danger" data-act="delsrc" data-id="${j.id}">${icon("trash")} 删除源文件</button>` : "") +
     `</div>` +
     `<ul class="job-src-list hidden" id="src-${j.id}">` +
-    srcNames.map((n) => `<li>🎵 ${escapeHtml(n)}</li>`).join("") +
+    srcNames.map((n) => `<li>${icon("music")} ${escapeHtml(n)}</li>`).join("") +
     `</ul>`;
 
   const acts = [];
-  if (j.status === "done") acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">⬇ 下载</button>`);
+  if (j.status === "done") acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">${icon("download")} 下载</button>`);
   if (j.status === "failed" || j.status === "cancelled")
     acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}">↻ 重试</button>`);
   if (ACTIVE.has(j.status))
-    acts.push(`<button class="btn small subtle" data-act="cancel" data-id="${j.id}">✕ 取消</button>`);
+    acts.push(`<button class="btn small subtle" data-act="cancel" data-id="${j.id}">${icon("x")} 取消</button>`);
   html += `<div class="job-actions">${acts.join("")}</div>`;
   return `<li data-job="${j.id}">${html}</li>`;
 }
