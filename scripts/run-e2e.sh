@@ -58,6 +58,8 @@ fi
 
 # server lifecycle: fresh isolated data dir per part
 start_server() {
+    # 清理上次 run 遗留的 restart_server 子进程（防端口占用打到旧数据）
+    pkill -f "uvicorn hac.main:app --host 127.0.0.1 --port $PORT" 2>/dev/null && sleep 1
     rm -rf "$E2E_DATA"
     mkdir -p "$E2E_DATA/library" "$E2E_DATA/tmp"
     cp -r data/library/testbook "$E2E_DATA/library/" 2>/dev/null
@@ -68,6 +70,7 @@ start_server() {
         .venv/bin/uvicorn hac.main:app --host 127.0.0.1 --port "$PORT" \
         > "$ROOT/data/e2e-server.log" 2>&1 &
     SRV_PID=$!
+    export E2E_DATA E2E_BASE_URL E2E_ROOT="$ROOT" HAC_FFMPEG_PATH HAC_FFPROBE_PATH
     for i in $(seq 1 20); do
         curl -sf -m 2 "$E2E_BASE_URL/api/health" >/dev/null && return 0
         sleep 0.5
