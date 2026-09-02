@@ -271,6 +271,46 @@ def main():
 
         pg.click("#batch-close")
 
+        # ===== F9: 播放 / A/B 对比 =====
+        pg.click('.tab[data-tab="uploads"]')
+        pg.click('#uploads-list [data-play]')
+        pg.wait_for_selector("#mini-player:not(.hidden)")
+        pg.wait_for_function(
+            "document.getElementById('mp-audio').readyState >= 2", timeout=15000)
+        _dur = pg.evaluate("document.getElementById('mp-audio').duration")
+        ok("F9: mini 试听 canplay", _dur and _dur > 0.2, str(_dur))
+        pg.click("#mp-close")
+
+        # 产物转码（aac 输出）后 A/B
+        pg.evaluate("""() => {
+          document.getElementById('output-pattern').value = '';
+        }""")
+        pg.click('.tab[data-tab="upload"]')
+        pg.set_input_files("#file-input", ["/tmp/hac-e2e/ch1.mp3"])
+        pg.wait_for_function("state.uploads.some(u=>u.name.includes('ch1'))",
+                             timeout=30000)
+        pg.select_option("#preset", "audiobook_aac_lc_64k")
+        pg.click("#btn-start")
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>j.mode==='single' && j.status==='done')",
+            timeout=180000)
+        pg.click('[data-act="abcmp"]')
+        pg.wait_for_selector("#ab-drawer:not(.hidden)")
+        pg.wait_for_function(
+            "document.getElementById('ab-audio-a').readyState >= 2 && "
+            "document.getElementById('ab-audio-b').readyState >= 2", timeout=15000)
+        # A 侧 seek 到 0.3s → B 侧应同步
+        pg.evaluate("document.getElementById('ab-audio-a').currentTime = 0.3")
+        pg.wait_for_timeout(600)
+        _a = pg.evaluate("document.getElementById('ab-audio-a').currentTime")
+        _b = pg.evaluate("document.getElementById('ab-audio-b').currentTime")
+        ok("F9: A/B seek 同步", abs(_a - _b) < 0.5, f"a={_a:.2f} b={_b:.2f}")
+        # 双面板时长都有值（源/产物流可读）
+        ok("F9: A/B 双侧时长", pg.evaluate(
+            "document.getElementById('ab-audio-a').duration > 0.2") and pg.evaluate(
+            "document.getElementById('ab-audio-b').duration > 0.2"))
+        pg.click("#ab-close")
+
         b.close()
 
 
