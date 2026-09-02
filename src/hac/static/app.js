@@ -995,13 +995,13 @@ function wireAbPlayer() {
     el.addEventListener("play", () => {
       if (ab.syncing) return;
       abMirror(side, "play");
-      $(`[data-ab="${side}"]`).textContent = "⏸";
+      document.querySelector(`[data-ab="${side}"]`).textContent = "⏸";
       $(`#ab-side-${side}`).classList.add("ab-playing");
     });
     el.addEventListener("pause", () => {
       if (ab.syncing) return;
       abMirror(side, "pause");
-      $(`[data-ab="${side}"]`).textContent = "▶";
+      document.querySelector(`[data-ab="${side}"]`).textContent = "▶";
       $(`#ab-side-${side}`).classList.remove("ab-playing");
     });
     el.addEventListener("seeked", () => {
@@ -1013,9 +1013,9 @@ function wireAbPlayer() {
       abMirror(side, "rate");
     });
     el.addEventListener("timeupdate", () => {
-      $(`[data-ab-cur="${side}"]`).textContent = fmtTime(el.currentTime);
-      $(`[data-ab-dur="${side}"]`).textContent = fmtTime(el.duration);
-      const seek = $(`[data-ab-seek="${side}"]`);
+      document.querySelector(`[data-ab-cur="${side}"]`).textContent = fmtTime(el.currentTime);
+      document.querySelector(`[data-ab-dur="${side}"]`).textContent = fmtTime(el.duration);
+      const seek = document.querySelector(`[data-ab-seek="${side}"]`);
       if (el.duration && document.activeElement !== seek)
         seek.value = Math.round((el.currentTime / el.duration) * 1000);
       // 漂移校正（播放中，>0.3s 才校正）
@@ -1027,13 +1027,13 @@ function wireAbPlayer() {
         setTimeout(() => { ab.syncing = false; }, 50);
       }
     });
-    $(`[data-ab="${side}"]`).onclick = () => {
+    document.querySelector(`[data-ab="${side}"]`).onclick = () => {
       if (el.paused) el.play(); else el.pause();
     };
-    $(`[data-ab-seek="${side}"]`).oninput = (e) => {
+    document.querySelector(`[data-ab-seek="${side}"]`).oninput = (e) => {
       if (el.duration) el.currentTime = (e.target.value / 1000) * el.duration;
     };
-    $(`[data-ab-vol="${side}"]`).oninput = (e) => {
+    document.querySelector(`[data-ab-vol="${side}"]`).oninput = (e) => {
       el.volume = e.target.value / 100;
     };
   }
