@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 
 from . import batch as batch_mod
 from . import config, encoders, library, probe, presets, uploads
+from . import streaming
 from . import template as template_mod
 from .jobs import JobManager
 from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
@@ -415,6 +416,46 @@ async def delete_job_output(job_id: str):
         raise HTTPException(404, "job not found")
     jm.delete_output(job_id)
     return {"ok": True}
+
+
+# ---------- playback streaming ----------
+
+def _resolve_stream_target(kind: str, ident: str) -> Path:
+    """Security gate for stream endpoints; raises HTTPException."""
+    if kind == "job":
+        job = jm.jobs.get(ident)
+        if not job or not job.output_path:
+            raise HTTPException(404, "job output not found")
+        if not job.output_path.exists():
+            raise HTTPException(404, "output deleted")
+        return job.output_path
+    if kind == "upload":
+        u = uploads.get(ident)
+        if not u or not u.path.exists():
+            raise HTTPException(404, "upload not found")
+        if (u.info or {}).get("kind") == "cover":
+            raise HTTPException(404, "not audio")
+        return u.path
+    if kind == "lib":
+        from . import library
+        p = Path(ident)
+        if not library.is_allowed(p) or not p.is_file():
+            raise HTTPException(403, "path outside library roots")
+        return p
+    raise HTTPException(404, "unknown stream kind")
+
+
+@app.get("/api/stream/{kind}/{ident}")
+async def stream_audio(kind: str, ident: str, request: Request):
+    path = _resolve_stream_target(kind, ident)
+    return streaming.ranged_response_for_request(
+        path, request.headers.get("range"))
+
+
+@app.get("/api/stream/{kind}/{ident}/info")
+async def stream_info(kind: str, ident: str):
+    path = _resolve_stream_target(kind, ident)
+    return streaming.info_payload(path)
 
 
 # ---------- batch rename / tag-write ----------
