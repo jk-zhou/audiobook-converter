@@ -762,7 +762,7 @@ function renderUploadsLibrary() {
 
   const upVis = UP_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
     !(c.key in state.columns) || state.columns[c.key]);
-  head.innerHTML = `<th class="nosort"></th>` +
+  head.innerHTML = `<th class="nosort"></th><th class="nosort"></th>` +
     upVis.map((c) => {
       let arrow = "", as = "";
       if (state.upSort.key === c.key) {
@@ -808,6 +808,8 @@ function renderUploadsLibrary() {
     };
     tr.innerHTML =
       `<td><input type="checkbox" class="up-pick" data-upid="${escapeHtml(u.id)}" ${locked ? "disabled" : ""} aria-label="选择 ${escapeHtml(u.name)}"></td>` +
+      (isCover ? `<td></td>` :
+        `<td><button class="del play-btn" title="试听" aria-label="试听 ${escapeHtml(u.name)}" data-play="upload" data-pid="${escapeHtml(u.id)}">${icon("play")}</button></td>`) +
       upVis.map((c) => upCell(c.key)).join("") +
       `<td class="up-acts">` +
       (isCover ? "" : `<button class="btn small subtle" data-add="${escapeHtml(u.id)}">${icon("download")} 加入列表</button>`) +
@@ -896,6 +898,186 @@ function wireUploadsLibrary() {
     saveSession();
     toast(`已加入 ${added} 个文件到当前列表`);
   };
+}
+
+/* ============ 播放：mini 试听条 + A/B 对比 ============ */
+
+function fmtTime(sec) {
+  if (!isFinite(sec)) return "0:00";
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+           : `${m}:${String(s).padStart(2, "0")}`;
+}
+
+const mini = { audio: null };
+
+function miniShow(name, url) {
+  const audio = $("mp-audio");
+  mini.audio = audio;
+  audio.src = url;
+  audio.playbackRate = parseFloat($("mp-rate").value) || 1;
+  $("mp-name").textContent = name;
+  $("mini-player").classList.remove("hidden");
+  $("mp-toggle").textContent = "⏸";
+  audio.play().catch(() => {});
+}
+
+function miniStop() {
+  const audio = $("mp-audio");
+  if (audio) { audio.pause(); audio.src = ""; }
+  $("mini-player").classList.add("hidden");
+}
+
+function wirePlayButtons() {
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-play]");
+    if (!btn) return;
+    playUpload(btn.dataset.pid, btn.getAttribute("aria-label")?.replace("试听 ", "") || btn.dataset.pid);
+  });
+}
+
+function wireMiniPlayer() {
+  const audio = $("mp-audio");
+  $("mp-toggle").onclick = () => {
+    if (audio.paused) { audio.play(); $("mp-toggle").textContent = "⏸"; }
+    else { audio.pause(); $("mp-toggle").textContent = "▶"; }
+  };
+  $("mp-close").onclick = miniStop;
+  $("mp-seek").oninput = (e) => {
+    if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration;
+  };
+  $("mp-rate").onchange = (e) => { audio.playbackRate = parseFloat(e.target.value) || 1; };
+  $("mp-vol").oninput = (e) => { audio.volume = e.target.value / 100; };
+  audio.addEventListener("timeupdate", () => {
+    if (!audio.duration) return;
+    $("mp-seek").value = Math.round((audio.currentTime / audio.duration) * 1000);
+    $("mp-cur").textContent = fmtTime(audio.currentTime);
+    $("mp-dur").textContent = fmtTime(audio.duration);
+  });
+  audio.addEventListener("ended", () => { $("mp-toggle").textContent = "▶"; });
+}
+
+// 播放入口：stream url 便捷构造
+function streamUrl(kind, id) { return `/api/stream/${kind}/${encodeURIComponent(id)}`; }
+
+function playUpload(uid, name) {
+  miniShow(name || uid, streamUrl("upload", uid));
+}
+function playJob(jobId, name) {
+  miniShow(name || jobId, streamUrl("job", jobId));
+}
+
+/* ---- A/B 对比 ---- */
+
+const ab = { syncing: false, chapterSync: true };
+
+function abMirror(sourceSide, action) {
+  // 以「最近操作者」为准：把 sourceSide 的状态镜像到另一侧
+  const a = $("ab-audio-a"), b = $("ab-audio-b");
+  const src = sourceSide === "a" ? a : b;
+  const dst = sourceSide === "a" ? b : a;
+  ab.syncing = true;
+  try {
+    if (action === "play") dst.play().catch(() => {});
+    if (action === "pause") dst.pause();
+    if (action === "seek") dst.currentTime = src.currentTime;
+    if (action === "rate") dst.playbackRate = src.playbackRate;
+  } finally {
+    setTimeout(() => { ab.syncing = false; }, 50);
+  }
+}
+
+function wireAbPlayer() {
+  const a = $("ab-audio-a"), b = $("ab-audio-b");
+  for (const side of ["a", "b"]) {
+    const el = side === "a" ? a : b;
+    el.addEventListener("play", () => {
+      if (ab.syncing) return;
+      abMirror(side, "play");
+      $(`[data-ab="${side}"]`).textContent = "⏸";
+      $(`#ab-side-${side}`).classList.add("ab-playing");
+    });
+    el.addEventListener("pause", () => {
+      if (ab.syncing) return;
+      abMirror(side, "pause");
+      $(`[data-ab="${side}"]`).textContent = "▶";
+      $(`#ab-side-${side}`).classList.remove("ab-playing");
+    });
+    el.addEventListener("seeked", () => {
+      if (ab.syncing) return;
+      abMirror(side, "seek");
+    });
+    el.addEventListener("ratechange", () => {
+      if (ab.syncing) return;
+      abMirror(side, "rate");
+    });
+    el.addEventListener("timeupdate", () => {
+      $(`[data-ab-cur="${side}"]`).textContent = fmtTime(el.currentTime);
+      $(`[data-ab-dur="${side}"]`).textContent = fmtTime(el.duration);
+      const seek = $(`[data-ab-seek="${side}"]`);
+      if (el.duration && document.activeElement !== seek)
+        seek.value = Math.round((el.currentTime / el.duration) * 1000);
+      // 漂移校正（播放中，>0.3s 才校正）
+      const other = side === "a" ? b : a;
+      if (!el.paused && !other.paused && !ab.syncing &&
+          Math.abs(el.currentTime - other.currentTime) > 0.3) {
+        ab.syncing = true;
+        other.currentTime = el.currentTime;
+        setTimeout(() => { ab.syncing = false; }, 50);
+      }
+    });
+    $(`[data-ab="${side}"]`).onclick = () => {
+      if (el.paused) el.play(); else el.pause();
+    };
+    $(`[data-ab-seek="${side}"]`).oninput = (e) => {
+      if (el.duration) el.currentTime = (e.target.value / 1000) * el.duration;
+    };
+    $(`[data-ab-vol="${side}"]`).oninput = (e) => {
+      el.volume = e.target.value / 100;
+    };
+  }
+  $("ab-close").onclick = () => {
+    a.pause(); b.pause();
+    $("ab-drawer").classList.add("hidden");
+  };
+  $("ab-drawer").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { $("ab-close").onclick(); return; }
+    if (e.key === " " && $("ab-drawer").contains(document.activeElement)) {
+      e.preventDefault();
+      if (a.paused) { a.play(); } else { a.pause(); }
+    }
+    if (e.key === "ArrowLeft") { a.currentTime = Math.max(0, a.currentTime - 5); }
+    if (e.key === "ArrowRight") { a.currentTime = a.currentTime + 5; }
+  });
+}
+
+function abOpen(jobId) {
+  const j = state.jobs[jobId];
+  if (!j || !j.source_ids || !j.source_ids.length) return;
+  const sid = j.source_ids[0];
+  const srcKind = sid.startsWith("lib:") ? "lib" : "upload";
+  const srcId = sid.startsWith("lib:") ? sid.slice(4) : sid;
+  $("ab-audio-a").src = streamUrl(srcKind, srcId);
+  $("ab-audio-b").src = streamUrl("job", jobId);
+  $("ab-sub").textContent = j.output_filename || "";
+  $("ab-drawer").classList.remove("hidden");
+  // 章节 chips（以产物为准）
+  fetch(streamUrl("job", jobId) + "/info").then((r) => r.json()).then((d) => {
+    const wrap = $("ab-chapters");
+    wrap.innerHTML = "";
+    for (const ch of d.chapters || []) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip";
+      btn.textContent = `${fmtTime(ch.start)} ${ch.title || ""}`;
+      btn.onclick = () => {
+        $("ab-audio-a").currentTime = ch.start;
+        $("ab-audio-b").currentTime = ch.start;
+      };
+      wrap.appendChild(btn);
+    }
+  }).catch(() => {});
 }
 
 /* ============ 批量处理（模板重命名/写 tag） ============ */
@@ -1146,7 +1328,7 @@ function renderLibTable(data) {
 
   const libVis = LIB_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
     !(c.key in state.columns) || state.columns[c.key]);
-  head.innerHTML = `<th class="nosort"></th>` +
+  head.innerHTML = `<th class="nosort"></th><th class="nosort"></th>` +
     libVis.map((c) => {
       let arrow = "", as = "";
       if (state.libSort.key === c.key) {
@@ -1211,6 +1393,7 @@ function renderLibTable(data) {
     tr.innerHTML =
       `<td><input type="checkbox" class="libpick" data-libid="${escapeHtml(f.id)}" ` +
       `data-libname="${escapeHtml(f.name)}" ${inList ? "checked" : ""} aria-label="选择 ${escapeHtml(f.name)}"></td>` +
+      `<td><button class="del play-btn" title="试听" aria-label="试听 ${escapeHtml(f.name)}" data-play="lib" data-pid="${escapeHtml(f.id.slice(4))}">${icon("play")}</button></td>` +
       libVis.map((c) => libCell(c.key)).join("") +
       `<td class="up-acts"></td>`;
     tr.querySelector("input").addEventListener("change", (e) => {
@@ -1357,6 +1540,10 @@ function jobCardHTML(j) {
   if (j.status === "done" && !cleaned) acts.push(`<button class="btn small" data-act="dl" data-id="${j.id}">${icon("download")} 下载</button>`);
   if (j.status === "done" && !cleaned && j.mode === "single")
     acts.push(`<button class="btn small subtle" data-act="batchout" data-id="${j.id}">${icon("settings")} 批量处理</button>`);
+  if (j.status === "done" && !cleaned)
+    acts.push(`<button class="btn small subtle" data-act="listen" data-id="${j.id}">▶ 试听</button>`);
+  if (j.status === "done" && !cleaned && j.source_ids.length)
+    acts.push(`<button class="btn small subtle" data-act="abcmp" data-id="${j.id}">A/B 对比</button>`);
   if (j.status === "failed" || j.status === "cancelled")
     acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}">↻ 重试</button>`);
   if (ACTIVE.has(j.status))
@@ -1373,6 +1560,8 @@ function bindJobActions(scope) {
       const { act, id } = b.dataset;
       if (act === "dl") location.href = `/api/jobs/${id}/download`;
       else if (act === "batchout") batchOpen("outputs", [id]);
+      else if (act === "listen") playJob(id, (state.jobs[id] || {}).output_filename);
+      else if (act === "abcmp") abOpen(id);
       else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
       else if (act === "cancel") await fetch(`/api/jobs/${id}`, { method: "DELETE" });
       else if (act === "togglesrc") {
@@ -1690,6 +1879,9 @@ function init() {
   wireUploadsLibrary();
   wireHeaderButtons();
   wireBatch();
+  wireMiniPlayer();
+  wireAbPlayer();
+  wirePlayButtons();
   connectSSE();
   restoreSessionFromServer();
   restoreWorkingSetFromSession();

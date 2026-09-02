@@ -211,6 +211,55 @@
   </aside>
 </main>
 
+<div id="mini-player" class="mini-player hidden">
+  <button class="mp-btn" id="mp-toggle" aria-label="播放/暂停">▶</button>
+  <span class="mp-time" id="mp-cur">0:00</span>
+  <input type="range" id="mp-seek" min="0" max="1000" value="0" aria-label="进度">
+  <span class="mp-time" id="mp-dur">0:00</span>
+  <span class="mp-name" id="mp-name"></span>
+  <select id="mp-rate" aria-label="倍速">
+    <option value="0.5">0.5×</option><option value="1" selected>1×</option>
+    <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+    <option value="2">2×</option>
+  </select>
+  <input type="range" id="mp-vol" min="0" max="100" value="100" aria-label="音量">
+  <button class="mp-btn subtle" id="mp-close" aria-label="关闭播放器">✕</button>
+  <audio id="mp-audio" preload="metadata"></audio>
+</div>
+<div id="ab-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ab-title">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <h3 id="ab-title">A/B 对比 <span class="small dim" id="ab-sub"></span></h3>
+      <button class="btn small subtle" id="ab-close" aria-label="关闭">✕</button>
+    </div>
+    <div class="ab-panels">
+      <div class="ab-side" id="ab-side-a">
+        <h4>源</h4>
+        <audio id="ab-audio-a" preload="metadata"></audio>
+        <div class="ab-controls">
+          <button class="mp-btn" data-ab="a" aria-label="播放/暂停 A">▶</button>
+          <span class="mp-time" data-ab-cur="a">0:00</span>
+          <input type="range" class="ab-seek" data-ab-seek="a" min="0" max="1000" value="0" aria-label="进度 A">
+          <span class="mp-time" data-ab-dur="a">0:00</span>
+        </div>
+        <label class="hint">音量 <input type="range" class="ab-vol" data-ab-vol="a" min="0" max="100" value="100"></label>
+      </div>
+      <div class="ab-side" id="ab-side-b">
+        <h4>产物</h4>
+        <audio id="ab-audio-b" preload="metadata"></audio>
+        <div class="ab-controls">
+          <button class="mp-btn" data-ab="b" aria-label="播放/暂停 B">▶</button>
+          <span class="mp-time" data-ab-cur="b">0:00</span>
+          <input type="range" class="ab-seek" data-ab-seek="b" min="0" max="1000" value="0" aria-label="进度 B">
+          <span class="mp-time" data-ab-dur="b">0:00</span>
+        </div>
+        <label class="hint">音量 <input type="range" class="ab-vol" data-ab-vol="b" min="0" max="100" value="100"></label>
+      </div>
+    </div>
+    <div id="ab-chapters" class="chips"></div>
+    <p class="hint">空格 播放/暂停 · ← → 快退/快进 5 秒（对焦本抽屉时生效）</p>
+  </div>
+</div>
 <div id="batch-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="batch-title">
   <div class="drawer-panel">
     <div class="drawer-head">
