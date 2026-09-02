@@ -47,3 +47,13 @@ def resolve_binary(name: str, env_key: str) -> Path | None:
 FFMPEG_PATH = resolve_binary("ffmpeg", "HAC_FFMPEG_PATH")
 FFPROBE_PATH = resolve_binary("ffprobe", "HAC_FFPROBE_PATH")
 LIBRARY_ROOTS = _parse_roots()
+
+
+def _parse_output_roots() -> list[Path]:
+    """agent 导出目录白名单（冒号分隔）；默认仅产物目录。"""
+    raw = os.getenv("HAC_OUTPUT_ROOTS", "")
+    roots = [Path(p).expanduser().resolve() for p in raw.split(":") if p.strip()]
+    return roots or [OUTPUT_DIR]
+
+
+OUTPUT_ROOTS = _parse_output_roots()

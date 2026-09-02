@@ -18,6 +18,41 @@ from . import batch as batch_mod
 from . import config, encoders, library, probe, presets, uploads
 from . import streaming
 from . import template as template_mod
+from fastapi.responses import PlainTextResponse
+
+AGENT_HELP_TEXT = """Audiobook Converter — agent API
+
+# 一步转换（目录递归收集音频；路径须在 HAC_LIBRARY_ROOTS 白名单内）
+curl -s http://HOST:8000/api/agent/convert -H 'Content-Type: application/json' -d '{
+  "inputs": ["/mnt/user/audiobooks/书A"],
+  "preset": "opus_32k",
+  "merge": true,
+  "book_title": "书A",
+  "output_dir": "/mnt/user/audiobooks-out"
+}'
+# → {"jobs":[{"id":"..","status":"done","output":"/mnt/user/audiobooks-out/书A.m4b","error":null}]}
+#   output_dir 给出时阻塞直到完成并导出（move=true 移动，false 复制）
+#   merge=false 时逐文件转码（每文件一个任务）；wait=false 立即返回仅拿 ids
+
+# 轮询状态（wait=false 时用）
+curl -s "http://HOST:8000/api/agent/status?ids=ID1,ID2"
+
+# 可用 preset
+curl -s http://HOST:8000/api/presets     # id 形如 audiobook_opus_32k / audiobook_aac_he_48k
+
+# 参数
+#  preset          预设 id（可省略，省略时用 settings）
+#  merge           true=合并为单个有声书文件
+#  book_title/artist/composer   合并模式的书级元数据
+#  output_pattern  输出文件名模板（仅逐文件），如 "${TrackNum:3} ${TrackTitle}"
+#  output_dir      导出目录（须在 HAC_OUTPUT_ROOTS 白名单内；给出即隐含等待）
+#  wait/timeout    是否阻塞等待（默认 true / 600s）
+#  move            导出时移动（默认 true；false=复制）
+
+# 单任务详情 / 下载
+curl -s http://HOST:8000/api/jobs/{id}
+curl -sOJ http://HOST:8000/api/jobs/{id}/download
+"""
 from .jobs import JobManager
 from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
 from .events import sse_endpoint
@@ -416,6 +451,95 @@ async def delete_job_output(job_id: str):
         raise HTTPException(404, "job not found")
     jm.delete_output(job_id)
     return {"ok": True}
+
+
+# ---------- agent one-shot API ----------
+
+class AgentConvertRequest(BaseModel):
+    inputs: list[str]                    # 目录（递归）或文件，须在 HAC_LIBRARY_ROOTS 内
+    preset: str | None = None
+    merge: bool = False
+    book_title: str | None = None
+    book_artist: str | None = None
+    composer: str | None = None
+    output_pattern: str | None = None    # 仅 single
+    output_dir: str | None = None        # 须在 HAC_OUTPUT_ROOTS 内；给出即等完成后导出
+    wait: bool = True
+    timeout: float = 600.0
+    move: bool = True                    # 导出时移动（False=复制）
+
+
+def _agent_job_view(job) -> dict:
+    return {"id": job.id, "status": job.status.value if hasattr(job.status, "value")
+            else str(job.status),
+            "output": str(job.output_path) if job.output_path
+            else job.output_filename,
+            "error": job.error}
+
+
+@app.post("/api/agent/convert")
+async def agent_convert(req: AgentConvertRequest):
+    """One-shot: paths -> transcode/merge -> (optionally) export to output_dir."""
+    from . import agent as agent_mod
+    from .models import JobCreate
+
+    paths = agent_mod.collect_inputs(req.inputs)
+    source_ids = [f"lib:{p}" for p in paths]
+    dest_dir = agent_mod.validate_output_dir(req.output_dir)
+
+    ids = []
+    if req.merge:
+        r = await create_job(JobCreate(
+            mode="merge", source_ids=source_ids, preset_id=req.preset,
+            title_source="inherit", title_pattern=req.output_pattern,
+            merge={"book_title": req.book_title, "book_artist": req.book_artist,
+                   "composer": req.composer} if (req.book_title or req.book_artist
+                                                 or req.composer) else None))
+        ids.append(r["job_id"])
+    else:
+        total = len(source_ids)
+        for i, sid in enumerate(source_ids, start=1):
+            r = await create_job(JobCreate(
+                mode="single", source_ids=[sid], preset_id=req.preset,
+                title_source="inherit", title_pattern=req.output_pattern,
+                position=i, total=total))
+            ids.append(r["job_id"])
+
+    # 轮询助手（内存态即可，agent 不关心 DB）
+    def get_rows(job_ids):
+        return [_agent_job_view(jm.jobs.get(jid))
+                for jid in job_ids if jm.jobs.get(jid)]
+
+    if not req.wait and not dest_dir:
+        return {"jobs": get_rows(ids)}
+
+    rows = await agent_mod.wait_jobs(get_rows, ids, timeout=req.timeout)
+
+    if dest_dir:
+        for view in rows:
+            job = jm.jobs.get(view["id"])
+            if job and job.status.value == "done" and job.output_path                     and job.output_path.exists():
+                final = agent_mod.export_output(job.output_path, dest_dir,
+                                                move=req.move)
+                view["output"] = str(final)
+                if req.move:
+                    job.output_path = final
+                    job.output_filename = Path(final).name
+                    jm._persist(job)
+    return {"jobs": rows}
+
+
+@app.get("/api/agent/status")
+async def agent_status(ids: str):
+    """极简多任务状态（逗号分隔 id），专为 agent 轮询设计。"""
+    wanted = [x for x in ids.split(",") if x]
+    rows = [_agent_job_view(jm.jobs.get(jid)) for jid in wanted if jm.jobs.get(jid)]
+    return {"jobs": rows}
+
+
+@app.get("/api/agent/help", response_class=PlainTextResponse)
+async def agent_help():
+    return AGENT_HELP_TEXT
 
 
 # ---------- playback streaming ----------
