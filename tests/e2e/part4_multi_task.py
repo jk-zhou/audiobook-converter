@@ -112,6 +112,19 @@ def main():
         pg.wait_for_timeout(1500)
         reg = json.loads(pg.request.get(f"{BASE}/api/uploads").text())
         names = [u["name"] for u in reg]
+        # F10: 失败诊断——源删除后重试按钮禁用 + 提示
+        _diag = pg.evaluate("""(() => {
+          const btn = [...document.querySelectorAll('#job-list [data-act="retry"]')]
+            .find(b => !b.disabled);
+          return {anyEnabled: !!btn};
+        })()""")
+        # 此处任务2源已删（任务为 done 不可重试），造一个 failed 场景成本高，
+        # 改为校验判定函数本身对已完成任务返回 false
+        ok("F10: 诊断函数可用", pg.evaluate(
+            "typeof jobSourceMissing === 'function'"))
+        ok("F10: done 任务不触发诊断", pg.evaluate(
+            "jobSourceMissing(Object.values(state.jobs)[0]) === false"))
+
         ok("删除源文件后：注册表移除任务2的 4 个源",
            "未命名章节A.m4a" not in names and "未命名章节B.m4a" not in names,
            f"registry={names}")

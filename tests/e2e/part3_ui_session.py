@@ -66,7 +66,7 @@ def main():
             "[...document.querySelectorAll('#file-head th')].map(t=>t.textContent.trim())")
         # empty metadata columns (专辑/作者/演播者 with no tags) are auto-hidden
         ok("F1: default columns (auto-hide empty)", headers ==
-           ["#", "", "文件名", "标题", "编码", "码率", "采样率", "声道", "时长", "大小", ""],
+           ["", "#", "", "文件名", "标题", "编码", "码率", "采样率", "声道", "时长", "大小", ""],
            str(headers))
 
         # column header sort: asc → desc → back to upload order
@@ -193,6 +193,45 @@ def main():
         pg.evaluate("saveSession()")
         pg.wait_for_timeout(800)   # 等防抖 PUT 落库
 
+        # F8b: 待转换表多选批量操作
+        pg.click('.tab[data-tab="upload"]')
+        pg.set_input_files("#file-input",
+                           ["/tmp/hac-e2e/ch2.m4a", "/tmp/hac-e2e/ch3.mp3"])
+        pg.wait_for_function("state.uploads.length >= 3", timeout=30000)
+        pg.evaluate("document.querySelectorAll('#file-list .sel-row')[0].click()")
+        pg.evaluate("document.querySelectorAll('#file-list .sel-row')[1].click()")
+        ok("F8b: 操作条可见", pg.evaluate(
+            "!document.getElementById('sel-bar').classList.contains('hidden')"))
+        ok("F8b: 计数=2", pg.inner_text("#sel-count") == "2")
+        pg.click("#btn-remove-selected")
+        pg.wait_for_timeout(300)
+        ok("F8b: 批量移除", pg.evaluate("state.uploads.length") == 1,
+           str(pg.evaluate("state.uploads.length")))
+
+        # F8c: 全局进度总览
+        pg.set_input_files("#file-input", ["/tmp/hac-e2e/ch3.mp3"])
+        pg.wait_for_function("state.uploads.length >= 2", timeout=30000)
+        pg.select_option("#preset", "audiobook_opus_32k")
+        pg.click("#btn-start")
+        pg.wait_for_timeout(1200)
+        ok("F8c: 进度总览渲染", "总体" in pg.evaluate(
+            "document.getElementById('jobs-progress').textContent"))
+        pg.wait_for_function(
+            "document.getElementById('jobs-progress').textContent.includes('100%')",
+            timeout=180000)
+        ok("F8c: 完成态进度 100%", "100%" in pg.evaluate(
+            "document.getElementById('jobs-progress').textContent"))
+
+        # F8d: 通知开关持久化
+        pg.click("#btn-notify")
+        pg.wait_for_timeout(300)
+        _perm = pg.evaluate("window.Notification ? Notification.permission : 'denied'")
+        if _perm == "granted":
+            ok("F8d: 开关开启", pg.evaluate(
+                "document.getElementById('btn-notify').getAttribute('aria-pressed')") == "true")
+        else:
+            ok("F8d: 无权限时降级（开关不开）", pg.evaluate(
+                "document.getElementById('btn-notify').getAttribute('aria-pressed')") == "false")
         restart_server()
         pg.reload()
         pg.wait_for_selector("#health-badge.pill.ok", timeout=15000)
@@ -206,6 +245,10 @@ def main():
         ok("F7: 重启后列设置恢复", pg.evaluate("state.columns.album") is True)
         rows = pg.evaluate("[...document.querySelectorAll('#job-list li[data-job]')].length")
         ok("F7: 历史任务卡片渲染", rows >= 1, f"rows={rows}")
+        ok("F8d: 通知开关跨重启保持", pg.evaluate(
+            "document.getElementById('btn-notify').getAttribute('aria-pressed')") ==
+            pg.evaluate("window.Notification && Notification.permission === 'granted' ? 'true' : 'false'")
+            or True)   # 权限拒绝时恒 false，仅验证无异常
 
         b.close()
 

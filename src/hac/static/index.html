@@ -56,6 +56,11 @@
         <label class="btn small" for="file-input">+ 文件</label>
         <label class="btn small" for="folder-input">+ 文件夹（递归）</label>
         <button id="btn-clear-files" class="btn small subtle">清空列表</button>
+        <span id="sel-bar" class="sel-bar hidden">
+          已选 <b id="sel-count">0</b> 个
+          <button id="btn-remove-selected" class="btn small subtle">移除所选</button>
+          <button id="btn-select-none" class="btn small subtle">取消选择</button>
+        </span>
         <input type="file" id="file-input" multiple accept="audio/*,.m4b,.opus,.flac,.m4a,.mp3,.aac,.ogg,.wav,.wma" class="hidden">
         <input type="file" id="folder-input" webkitdirectory multiple class="hidden">
         <div id="upload-progress" class="upload-progress" aria-live="polite" aria-label="上传进度"></div>
@@ -205,6 +210,11 @@
         <button id="btn-zip" class="btn small"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> 打包 zip</button>
         <button id="btn-cancel-all" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> 取消全部</button>
         <button id="btn-clear-finished" class="btn small subtle"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> 清理产物</button>
+      </div>
+      <div class="jobbar-head">
+        <span id="jobs-progress" class="jobs-progress"></span>
+        <button class="btn small subtle" id="btn-notify" title="任务完成桌面通知"
+                aria-pressed="false">🔔 通知</button>
       </div>
       <ul id="job-list" class="joblist" aria-live="polite"></ul>
     </section>

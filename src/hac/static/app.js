@@ -497,7 +497,7 @@ function renderFiles() {
   const vis = COLUMNS.filter((c) => state.columns[c.key] &&
     (c.key === "name" || !emptyCols[c.key] || !state.uploads.length));
 
-  head.innerHTML = `<th class="nosort">#</th><th class="nosort"></th>` +
+  head.innerHTML = `<th class="nosort"><input type="checkbox" id="sel-all" class="sel-cb" aria-label="全选"></th><th class="nosort">#</th><th class="nosort"></th>` +
     vis.map((c) => {
       let arrow = "", as = "";
       if (state.sort.key === c.key) {
@@ -541,7 +541,7 @@ function renderFiles() {
         return `<td>${u.lastModified ? new Date(u.lastModified).toLocaleString() : ""}</td>`;
       return `<td title="${escapeHtml(m[c.key] ?? "")}">${escapeHtml(m[c.key] ?? "")}</td>`;
     };
-    tr.innerHTML = `<td class="pos">${i + 1}</td><td class="handle">${icon("grip")}</td>` +
+    tr.innerHTML = `<td><input type="checkbox" class="sel-cb sel-row" data-sel-id="${escapeHtml(u.id)}" aria-label="选择 ${escapeHtml(u.name)}"></td><td class="pos">${i + 1}</td><td class="handle">${icon("grip")}</td>` +
       vis.map(cell).join("") +
       `<td class="acts-cell">` +
       `<button class="mv" data-mv="-1" title="上移" aria-label="上移 ${escapeHtml(u.name)}" ${i === 0 ? "disabled" : ""}>${icon("arrow-up")}</button>` +
@@ -581,7 +581,31 @@ function renderFiles() {
     });
     tbody.appendChild(tr);
   });
+  // 多选：全选/半选/操作条
+  const selAll = $("sel-all");
+  if (selAll) {
+    selAll.checked = state.uploads.length > 0 &&
+      tbody.querySelectorAll(".sel-row:checked").length === state.uploads.length;
+    selAll.indeterminate = !selAll.checked &&
+      tbody.querySelectorAll(".sel-row:checked").length > 0;
+    selAll.onclick = () => {
+      tbody.querySelectorAll(".sel-row").forEach((cb) => { cb.checked = selAll.checked; });
+      updateSelBar();
+    };
+  }
+  tbody.querySelectorAll(".sel-row").forEach((cb) => {
+    cb.addEventListener("change", updateSelBar);
+  });
+  updateSelBar();
   updateMergeHint();
+}
+
+function updateSelBar() {
+  const n = document.querySelectorAll("#file-list .sel-row:checked").length;
+  const bar = $("sel-bar");
+  if (!bar) return;
+  $("sel-count").textContent = n;
+  bar.classList.toggle("hidden", n === 0);
 }
 
 /* ============ folder drop & pickers ============ */
@@ -613,6 +637,21 @@ function wireDrop() {
     if (!files.length) { alert("所选文件夹中没有可识别的音频文件"); return; }
     uploadFiles(files);
     e.target.value = "";
+  };
+  $("btn-remove-selected").onclick = () => {
+    const ids = new Set([...document.querySelectorAll("#file-list .sel-row:checked")]
+      .map((cb) => cb.dataset.selId));
+    state.uploads = state.uploads.filter((u) => !ids.has(u.id));
+    if (state.coverUploadId && ids.has(state.coverUploadId)) state.coverUploadId = null;
+    renderFiles();
+    saveSession();
+    toast(`已移除 ${ids.size} 个文件`);
+  };
+  $("btn-select-none").onclick = () => {
+    document.querySelectorAll("#file-list .sel-row:checked").forEach((cb) => {
+      cb.checked = false;
+    });
+    updateSelBar();
   };
   $("btn-clear-files").onclick = () => {
     state.uploads = [];
@@ -898,6 +937,58 @@ function wireUploadsLibrary() {
     saveSession();
     toast(`已加入 ${added} 个文件到当前列表`);
   };
+}
+
+/* ============ 桌面通知 ============ */
+
+const notify = { enabled: false };
+
+async function wireNotify() {
+  const btn = $("btn-notify");
+  if (!btn) return;
+  // 服务端持久化开关（依赖 settings KV）
+  try {
+    const rows = await (await fetch("/api/settings")).json();
+    const row = rows.find((x) => x.key === "settings.notifications");
+    notify.enabled = row ? JSON.parse(row.value) === true : false;
+  } catch (e) { /* DB 不可用时默认关 */ }
+  paintNotifyBtn();
+  btn.onclick = async () => {
+    if (notify.enabled) {
+      notify.enabled = false;
+    } else {
+      if (!("Notification" in window)) { toast("此浏览器不支持桌面通知"); return; }
+      let perm = Notification.permission;
+      if (perm === "default") perm = await Notification.requestPermission();
+      if (perm !== "granted") { toast("通知权限被拒绝"); return; }
+      notify.enabled = true;
+    }
+    paintNotifyBtn();
+    try {
+      await fetch("/api/settings", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "settings.notifications",
+                               value: JSON.stringify(notify.enabled) }),
+      });
+    } catch (e) { /* offline */ }
+  };
+}
+
+function paintNotifyBtn() {
+  const btn = $("btn-notify");
+  btn.classList.toggle("btn-notify-on", notify.enabled);
+  btn.setAttribute("aria-pressed", String(notify.enabled));
+}
+
+function maybeNotify(job) {
+  if (!notify.enabled || !document.hidden) return;
+  if (!["done", "failed"].includes(job.status)) return;
+  const isDone = job.status === "done";
+  const n = new Notification(isDone ? "转换完成" : "转换失败", {
+    body: job.output_filename + (isDone ? "" : `\n${(job.error || "").slice(0, 140)}`),
+    tag: job.id,
+  });
+  n.onclick = () => { window.focus(); n.close(); };
 }
 
 /* ============ 播放：mini 试听条 + A/B 对比 ============ */
@@ -1501,6 +1592,15 @@ function paramSummary(j) {
   return bits.join(" · ") || "默认参数";
 }
 
+function jobSourceMissing(j) {
+  // failed 且全部源都不在注册表/书库 → 重试必 404
+  if (j.status !== "failed") return false;
+  const known = new Set([...(state.uploadsAllRaw || []).map((u) => u.id),
+                         ...state.uploads.map((u) => u.id)]);
+  return j.source_ids.every((sid) =>
+    sid.startsWith("lib:") ? false : !known.has(sid));
+}
+
 function jobCardHTML(j) {
   const p = (j.progress || 0).toFixed(1);
   let html =
@@ -1544,8 +1644,12 @@ function jobCardHTML(j) {
     acts.push(`<button class="btn small subtle" data-act="listen" data-id="${j.id}">▶ 试听</button>`);
   if (j.status === "done" && !cleaned && j.source_ids.length)
     acts.push(`<button class="btn small subtle" data-act="abcmp" data-id="${j.id}">A/B 对比</button>`);
-  if (j.status === "failed" || j.status === "cancelled")
-    acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}">↻ 重试</button>`);
+  if (j.status === "failed" || j.status === "cancelled") {
+    const missing = jobSourceMissing(j);
+    acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}" ${missing ? "disabled title=\"源文件已删除，可在已上传文件重新加入后再试\"" : ""}>↻ 重试</button>`);
+    if (missing)
+      acts.push(`<span class="hint warn-hint-inline">源文件已删除，可重新加入后再试</span>`);
+  }
   if (ACTIVE.has(j.status))
     acts.push(`<button class="btn small subtle" data-act="cancel" data-id="${j.id}">${icon("x")} 取消</button>`);
   html += `<div class="job-actions">${acts.join("")}</div>`;
@@ -1592,6 +1696,23 @@ function bindJobActions(scope) {
 const JOBS_RENDER_CAP = 50;
 let _jobsRenderLimit = JOBS_RENDER_CAP;
 
+function updateJobsProgress() {
+  const jobs = Object.values(state.jobs);
+  const el = $("jobs-progress");
+  if (!el) return;
+  if (!jobs.length) {
+    el.textContent = "";
+    document.title = "Audiobook Converter";
+    return;
+  }
+  const done = jobs.filter((j) => j.status === "done").length;
+  const active = jobs.filter((j) => ACTIVE.has(j.status));
+  const wsum = active.reduce((acc, j) => acc + (j.progress || 0) / 100, 0);
+  const pct = Math.round(((done + wsum) / jobs.length) * 100);
+  el.textContent = `${done}/${jobs.length} 完成 · 总体 ${pct}%`;
+  document.title = `(${pct}%) Audiobook Converter`;
+}
+
 function renderJobs() {
   const ul = $("job-list");
   const jobs = Object.values(state.jobs)
@@ -1599,11 +1720,13 @@ function renderJobs() {
   ul.innerHTML = "";
   if (!jobs.length) {
     _jobsRenderLimit = JOBS_RENDER_CAP;
+    updateJobsProgress();
     ul.innerHTML = `<li class="empty empty-jobs">${icon("play")}
       <p>暂无任务 — 选择文件后点「开始转换」</p></li>`;
     return;
   }
   const shown = jobs.slice(0, _jobsRenderLimit);
+  updateJobsProgress();
   for (const j of shown) ul.insertAdjacentHTML("beforeend", jobCardHTML(j));
   if (jobs.length > shown.length) {
     ul.insertAdjacentHTML("beforeend",
@@ -1630,6 +1753,7 @@ function updateJobCard(j, prev) {
   if (bar) bar.style.width = p + "%";
   const pct = li.querySelector(".pct-text");
   if (pct) pct.textContent = p + "%";
+  updateJobsProgress();   // 单卡更新也驱动全局总览
 }
 
 function connectSSE() {
@@ -1643,8 +1767,12 @@ function connectSSE() {
     const j = JSON.parse(e.data);
     const prev = state.jobs[j.id];
     state.jobs[j.id] = j;
-    if (prev) updateJobCard(j, prev);
-    else renderJobs();
+    if (prev) {
+      updateJobCard(j, prev);
+      if (prev.status !== j.status) maybeNotify(j);
+    } else {
+      renderJobs();
+    }
   });
   es.addEventListener("uploads.changed", (e) => {
     // 文件被删除（已上传 tab / 任务卡片删除源文件）：工作集剔除 + 相关任务标记
@@ -1882,6 +2010,7 @@ function init() {
   wireMiniPlayer();
   wireAbPlayer();
   wirePlayButtons();
+  wireNotify();
   connectSSE();
   restoreSessionFromServer();
   restoreWorkingSetFromSession();
