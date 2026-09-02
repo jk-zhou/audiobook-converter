@@ -109,3 +109,19 @@ def test_calc_progress():
     assert calc_progress(120_000_000, 60.0) == 100.0
     assert calc_progress(1000, None) == 0.0
     assert calc_progress(-5, 10.0) == 0.0
+
+
+def test_libopus_44100_autocorrects_to_48k():
+    """libopus 不支持 44.1kHz——必须自动重采样为 48k，否则编码器打开即失败。"""
+    a = build_ffmpeg_args("/tmp/in.mp3", "/tmp/out.opus",
+                          TranscodeSettings(format="opus", codec="libopus",
+                                            bitrate="64k", samplerate=44100))
+    assert "48000" in a
+    assert "44100" not in a
+
+
+def test_non_opus_samplerate_untouched():
+    a = build_ffmpeg_args("/tmp/in.mp3", "/tmp/out.m4a",
+                          TranscodeSettings(format="m4a", codec="aac",
+                                            samplerate=44100))
+    assert "44100" in a

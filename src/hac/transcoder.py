@@ -110,8 +110,14 @@ def audio_encode_args(s: TranscodeSettings) -> list[str]:
     elif s.quality is not None and codec == "libfdk_aac":
         args += ["-vbr", str(s.quality)]
 
-    if s.samplerate:
-        args += ["-ar", str(s.samplerate)]
+    samplerate = s.samplerate
+    if codec == "libopus" and samplerate and \
+            samplerate not in (8000, 12000, 16000, 24000, 48000):
+        # libopus 只支持 8/12/16/24/48 kHz——44.1kHz 源/设置会导致
+        # "Could not open encoder"(-22)，自动重采样到 48kHz
+        samplerate = 48000
+    if samplerate:
+        args += ["-ar", str(samplerate)]
     if s.channels:
         args += ["-ac", str(s.channels)]
     if s.compression_level is not None and codec == "libopus":

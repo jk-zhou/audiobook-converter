@@ -15,6 +15,7 @@ const state = {
   columns: { name: true, track: true, title: true, codec: true, bitrate: true,
              srate: true, channels: true, duration: true, size: true,
              album: false, artist: false, composer: false, mtime: false },
+  columnsTouched: {},
   upSort: { key: null, dir: 1 },   // 已上传文件表排序
   libSort: { key: null, dir: 1 },  // 书库表排序
 };
@@ -96,6 +97,7 @@ function buildSessionPayload() {
     outputPattern: $("output-pattern").value,
     sort: state.sort,
     columns: state.columns,
+    columnsTouched: state.columnsTouched,
     workingSet,
   };
 }
@@ -195,6 +197,7 @@ function applySession(s) {
   setv("output-pattern", s.outputPattern);
   if (s.sort) state.sort = s.sort;
   if (s.columns) state.columns = { ...state.columns, ...s.columns };
+  if (s.columnsTouched) state.columnsTouched = s.columnsTouched;
   state.sessionWorkingSet = Array.isArray(s.workingSet) ? s.workingSet
     : (Array.isArray(s.libPicks) ? s.libPicks.map((x) => ({ ...x, kind: "lib" })) : []);
 }
@@ -468,6 +471,7 @@ function renderColumnPopover() {
     cb.checked = !!state.columns[c.key];
     cb.onchange = () => {
       state.columns[c.key] = cb.checked;
+      state.columnsTouched[c.key] = true;
       renderFiles();
       renderUploadsLibrary();
       if (state.libPath) libLoad(state.libPath);
@@ -495,7 +499,8 @@ function renderFiles() {
     });
   }
   const vis = COLUMNS.filter((c) => state.columns[c.key] &&
-    (c.key === "name" || !emptyCols[c.key] || !state.uploads.length));
+    (c.key === "name" || state.columnsTouched[c.key] ||
+     !emptyCols[c.key] || !state.uploads.length));
 
   head.innerHTML = `<th class="nosort"><input type="checkbox" id="sel-all" class="sel-cb" aria-label="全选"></th><th class="nosort">#</th><th class="nosort"></th>` +
     vis.map((c) => {
