@@ -54,6 +54,9 @@ class MergeOptions(BaseModel):
     book_artist: str | None = None
     composer: str | None = None
     cover_upload_id: str | None = None
+    copy_audio: bool = False           # 直通合并（-c copy，不重编码）
+    volume_title: str | None = None    # 卷的 title tag（分卷模式）
+    volume_disc: str | None = None     # disc tag "n/总数"（分卷模式）
 
 
 class VerifyInfo(BaseModel):
@@ -134,6 +137,8 @@ class JobCreate(BaseModel):
     total: int | None = None
     title_source: TitleSource = "inherit"
     title_pattern: str | None = None
+    merge_split: int | None = None       # 每卷章节数（merge 模式分卷）
+    merge_copy: bool = False             # 直通合并（-c copy，不重编码）
 
 
 class Preset(BaseModel):

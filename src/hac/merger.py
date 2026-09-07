@@ -46,39 +46,15 @@ def build_chapter_meta(
     return "\n".join(lines) + "\n"
 
 
-def build_chunk_args(
-    sources: list[Path], dst: Path, settings: TranscodeSettings, normalize: bool = False,
-) -> list[str]:
-    """Phase-1 pass: encode one chunk to the target settings (audio only)."""
-    n = len(sources)
-    args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin"]
-    for s in sources:
-        args += ["-i", str(s)]
-    fc = "".join(f"[{i}:a]" for i in range(n)) + f"concat=n={n}:v=0:a=1[c]"
-    if normalize:
-        fc += f";[c]{transcoder.LOUDNORM}[outa]"
-        out_label = "[outa]"
-    else:
-        out_label = "[c]"
-    args += ["-filter_complex", fc, "-map", out_label]
-    args += transcoder.audio_encode_args(settings)
-    args += ["-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
-    return args
 
-
-def build_concat_list(parts: list[Path], list_file: Path) -> None:
-    lines = [f"file '{p.resolve()}'".replace("'", "'\\''") for p in parts]
-    list_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def build_finalize_args(
-    parts: list[Path],
+def build_passthrough_args(
     list_file: Path,
-    meta_file: Path,
     cover: Path | None,
+    meta_file: Path,
     dst: Path,
+    extra_metadata: dict | None = None,
 ) -> list[str]:
-    """Phase-2 pass: stream-copy concat of the encoded parts + chapters + cover."""
+    """直通合并：concat demuxer + -c copy + 章节/封面/卷元数据，一次完成。"""
     args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin",
             "-f", "concat", "-safe", "0", "-i", str(list_file)]
     meta_idx = 1
@@ -92,6 +68,8 @@ def build_finalize_args(
                  "-disposition:v:0", "attached_pic"]
     args += ["-c:a", "copy"]
     args += ["-map_metadata", str(meta_idx), "-map_chapters", str(meta_idx)]
+    for k, v in (extra_metadata or {}).items():
+        args += ["-metadata", f"{k}={v}"]
     args += ["-movflags", "+faststart", "-f", "mp4",
              "-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
     return args
@@ -121,6 +99,7 @@ def build_merge_args(
     dst: Path,
     settings: TranscodeSettings,
     normalize: bool = False,
+    extra_metadata: dict | None = None,
 ) -> list[str]:
     """Merge args adopt the user's audio encoding settings (AAC family only —
     validated upstream); only the container format is forced to m4b."""
@@ -147,6 +126,8 @@ def build_merge_args(
 
     args += transcoder.audio_encode_args(settings)
     args += ["-map_metadata", str(meta_idx), "-map_chapters", str(meta_idx)]
+    for k, v in (extra_metadata or {}).items():
+        args += ["-metadata", f"{k}={v}"]
     args += ["-movflags", "+faststart", "-f", "mp4",
              "-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
     return args
@@ -204,6 +185,7 @@ def build_finalize_args(
     meta_file: Path,
     cover: Path | None,
     dst: Path,
+    extra_metadata: dict | None = None,
 ) -> list[str]:
     """Phase-2 pass: stream-copy concat of encoded parts + chapters + cover."""
     args = [str(config.FFMPEG_PATH), "-y", "-hide_banner", "-nostdin",
@@ -219,6 +201,8 @@ def build_finalize_args(
                  "-disposition:v:0", "attached_pic"]
     args += ["-c:a", "copy"]
     args += ["-map_metadata", str(meta_idx), "-map_chapters", str(meta_idx)]
+    for k, v in (extra_metadata or {}).items():
+        args += ["-metadata", f"{k}={v}"]
     args += ["-movflags", "+faststart", "-f", "mp4",
              "-progress", "pipe:1", "-stats_period", "0.05", "-nostats", str(dst)]
     return args
@@ -290,12 +274,57 @@ async def execute_merge(job: Job, mgr) -> None:
         mgr.set_status(job.id, JobStatus.FAILED,
                        error=f"cannot probe input: {', '.join(bad[:3])}")
         return
+    book = job.merge or None
+    copy_audio = bool(book and book.copy_audio)
     total = sum(durations)
     job.total_duration_sec = total
 
-    book = job.merge or None
+    # 直通校验（lib: 源在创建时未 probe，这里是权威兜底）：
+    # 全部 AAC 且采样率/声道一致，否则 -c copy 会产出坏文件
+    if copy_audio:
+        import asyncio as _aio
+
+        async def _probe_full():
+            sem = _aio.Semaphore(16)
+
+            async def one(p):
+                async with sem:
+                    return await _aio.to_thread(
+                        lambda: (lambda d: probe.probe(p) if d is not None
+                                 else None)(probe.probe_duration(p)))
+            return list(await _aio.gather(*[one(x) for x in sources]))
+
+        infos = await _probe_full()
+        bad, unknown = [], []
+        for src, info in zip(sources, infos):
+            if not info:
+                unknown.append(src.name)
+            elif info.get("codec") != "aac":
+                bad.append(f"{src.name} ({info['codec']})")
+        if bad or unknown:
+            msg = "直通合并仅支持 AAC 源："
+            if bad:
+                msg += "非 AAC：" + "、".join(bad[:5])
+            if unknown:
+                msg += ("；" if bad else "") + f"无法识别 {len(unknown)} 个"
+            mgr.set_status(job.id, JobStatus.FAILED, error=msg)
+            return
+        srs = {i.get("sample_rate") for i in infos if i}
+        chs = {i.get("channels") for i in infos if i}
+        if len(srs) > 1 or len(chs) > 1:
+            mgr.set_status(job.id, JobStatus.FAILED,
+                           error="直通合并要求所有源采样率/声道一致"
+                                 f"（实际 {sorted(srs)} Hz / {sorted(chs)} 声道），"
+                                 "请改用重新编码")
+            return
+
     cover = _resolve_cover(job, work)
     work_dst = work / f"{job.id}.m4b"
+    extra_meta = {}
+    if book and book.volume_title:
+        extra_meta["title"] = book.volume_title
+    if book and book.volume_disc:
+        extra_meta["disc"] = book.volume_disc
     rc, err_tail = 0, ""
 
     def report(us, base, span):
@@ -316,8 +345,15 @@ async def execute_merge(job: Job, mgr) -> None:
                                book_artist=book.book_artist if book else None,
                                composer=book.composer if book else None),
             encoding="utf-8")
-        args = build_merge_args(sources, cover, meta_file, work_dst,
-                                job.settings, normalize=job.normalize)
+        if copy_audio:
+            list_file = work / f"{job.id}_list.txt"
+            build_concat_list(sources, list_file)
+            args = build_passthrough_args(list_file, cover, meta_file,
+                                          work_dst, extra_meta)
+        else:
+            args = build_merge_args(sources, cover, meta_file, work_dst,
+                                    job.settings, normalize=job.normalize,
+                                    extra_metadata=extra_meta)
         rc, err_tail = await transcoder.run_ffmpeg(
             args,
             register_proc=lambda p: mgr.register_proc(job.id, p),
@@ -337,7 +373,13 @@ async def execute_merge(job: Job, mgr) -> None:
             part = work / f"{job.id}_part{idx:03d}.m4a"
             offset = sum(chunk_sizes)
             chunk_dur = sum(durations[offset:offset + len(chunk)])
-            args = build_chunk_args(chunk, part, job.settings, normalize=job.normalize)
+            if copy_audio:
+                list_file = work / f"{job.id}_part{idx:03d}_list.txt"
+                build_concat_list(chunk, list_file)
+                args = build_passthrough_args(list_file, None, None, part)
+            else:
+                args = build_chunk_args(chunk, part, job.settings,
+                                        normalize=job.normalize)
             rc, err_tail = await transcoder.run_ffmpeg(
                 args,
                 register_proc=lambda p: mgr.register_proc(job.id, p),
@@ -381,7 +423,8 @@ async def execute_merge(job: Job, mgr) -> None:
         build_concat_list(parts, list_file)
 
         # ---- phase 2: stream-copy concat + chapters + cover ----
-        args = build_finalize_args(parts, list_file, meta_file, cover, work_dst)
+        args = build_finalize_args(parts, list_file, meta_file, cover, work_dst,
+                                   extra_metadata=extra_meta or None)
         rc, err_tail = await transcoder.run_ffmpeg(
             args,
             register_proc=lambda p: mgr.register_proc(job.id, p),

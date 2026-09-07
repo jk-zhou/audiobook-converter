@@ -311,8 +311,11 @@ def validate_merge_settings(settings) -> None:
 async def create_job(req: JobCreate):
     if not req.source_ids:
         raise HTTPException(400, "source_ids required")
-    if req.mode == "merge" and len(req.source_ids) < 2:
+    # 分卷模式允许单文件卷（最后一卷可能仅 1 章），整体仍需 ≥1
+    if req.mode == "merge" and len(req.source_ids) < 2 and not req.merge_split:
         raise HTTPException(400, "merge needs at least 2 sources")
+    if req.merge_split is not None and req.merge_split < 1:
+        raise HTTPException(400, "merge_split 必须 ≥ 1")
     if req.mode == "merge" and len(req.source_ids) > config.MAX_MERGE_FILES:
         raise HTTPException(
             400, f"合并文件数 {len(req.source_ids)} 超过单个任务的上限 {config.MAX_MERGE_FILES}"
@@ -348,7 +351,26 @@ async def create_job(req: JobCreate):
     if merge_opts:
         # merge always produces an M4B regardless of the preset's format
         settings = settings.model_copy(update={"format": "m4b"})
-        validate_merge_settings(settings)
+        if not req.merge_copy:
+            validate_merge_settings(settings)
+
+    # 直通预检：uploads 池的编码信息已知，立即拒绝非 AAC；lib 路径执行时兜底
+    if merge_opts and req.merge_copy:
+        unknown, bad = [], []
+        for sid in req.source_ids:
+            if sid.startswith("lib:"):
+                unknown.append(sid)
+                continue
+            u = uploads.get(sid)
+            codec = (u.info or {}).get("codec") if u else None
+            if codec is None:
+                unknown.append(sid)
+            elif codec != "aac":
+                bad.append(f"{u.name} ({codec})")
+        if bad:
+            raise HTTPException(
+                400, "直通合并仅支持 AAC 源，以下文件需先转码或改用重新编码："
+                     + "、".join(bad[:5]) + ("…" if len(bad) > 5 else ""))
         if not merge_opts.book_title:
             from . import uploads as _uploads
             merge_opts = merge_opts.model_copy(
@@ -359,6 +381,38 @@ async def create_job(req: JobCreate):
     for sid, path in zip(req.source_ids, paths):
         from . import uploads as _up
         source_names.append(Path(_up.display_stem(sid) or path.stem).name)
+
+    # ---- 分卷：把 source_ids 按 N 章切成 M 卷，每卷一个独立 merge 任务 ----
+    if req.mode == "merge" and req.merge_split:
+        book = merge_opts.book_title or "未命名"
+        n = len(req.source_ids)
+        n_vols = -(-n // req.merge_split)
+        created = []
+        for vol in range(1, n_vols + 1):
+            lo = (vol - 1) * req.merge_split
+            chunk_ids = req.source_ids[lo:lo + req.merge_split]
+            chunk_paths = paths[lo:lo + req.merge_split]
+            vol_title = f"{book} 第{lo + 1:03d}-{lo + len(chunk_ids):03d}章"
+            vol_opts = merge_opts.model_copy(update={
+                "volume_title": vol_title,
+                "volume_disc": f"{vol}/{n_vols}",
+            })
+            job = Job(
+                mode="merge",
+                source_ids=chunk_ids,
+                source_paths=chunk_paths,
+                source_names=source_names[lo:lo + len(chunk_ids)],
+                output_filename=f"{book}_{vol:02d}",
+                settings=settings,
+                metadata=req.metadata,
+                normalize=req.normalize,
+                merge=vol_opts,
+                title_source=req.title_source,
+                title_pattern=req.title_pattern,
+            )
+            jm.add(job)
+            created.append(job)
+        return {"job_id": created[0].id, "job_ids": [j.id for j in created]}
 
     output_filename = req.output_filename or _default_output_name(req, paths)
     if req.mode == "single" and req.output_pattern:
@@ -401,7 +455,7 @@ async def create_job(req: JobCreate):
         title_pattern=req.title_pattern,
     )
     jm.add(job)
-    return {"job_id": job.id}
+    return {"job_id": job.id, "job_ids": [job.id]}
 
 
 @app.get("/api/jobs")
