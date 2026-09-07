@@ -169,6 +169,36 @@ async function migrateLocalSession() {
   } catch (e) { /* server unreachable */ }
 }
 
+function syncMergeModeUi() {
+  const splitOn = $("split-on").checked;
+  $("split-n-wrap").classList.toggle("hidden", !splitOn);
+  $("split-hint").classList.toggle("hidden", !splitOn);
+  const copy = $("audio-copy").checked;
+  $("copy-note").classList.toggle("hidden", !copy);
+  validateCopySources();
+}
+
+function validateCopySources() {
+  const err = $("copy-err");
+  if (!$("audio-copy").checked || !$("merge-on").checked) {
+    err.classList.add("hidden");
+    return;
+  }
+  const unknown = [], bad = [];
+  for (const u of state.uploads) {
+    const codec = (u.info || {}).codec;
+    if (!codec) unknown.push(u.name);
+    else if (codec !== "aac") bad.push(`${u.name} (${codec})`);
+  }
+  const badAll = [...bad, ...unknown.map((n) => `${n} (未知编码)`)];
+  if (badAll.length) {
+    err.textContent = `检测到 ${badAll.length} 个非 AAC 文件（${badAll.slice(0, 3).join("、")}${badAll.length > 3 ? "…" : ""}）。直通仅支持 AAC，请改用重新编码或先转码`;
+    err.classList.remove("hidden");
+  } else {
+    err.classList.add("hidden");
+  }
+}
+
 function restoreSession() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch (e) { s = null; }
@@ -1985,35 +2015,6 @@ function wireSettings() {
       updateMergeHint();
       saveSession();
     }));
-  // 直通/分卷模式联动 + 即时校验
-  function syncMergeModeUi() {
-    const splitOn = $("split-on").checked;
-    $("split-n-wrap").classList.toggle("hidden", !splitOn);
-    $("split-hint").classList.toggle("hidden", !splitOn);
-    const copy = $("audio-copy").checked;
-    $("copy-note").classList.toggle("hidden", !copy);
-    validateCopySources();
-  }
-  function validateCopySources() {
-    const err = $("copy-err");
-    if (!$("audio-copy").checked || !$("merge-on").checked) {
-      err.classList.add("hidden");
-      return;
-    }
-    const unknown = [], bad = [];
-    for (const u of state.uploads) {
-      const codec = (u.info || {}).codec;
-      if (!codec) unknown.push(u.name);
-      else if (codec !== "aac") bad.push(`${u.name} (${codec})`);
-    }
-    const badAll = [...bad, ...unknown.map((n) => `${n} (未知编码)`)];
-    if (badAll.length) {
-      err.textContent = `检测到 ${badAll.length} 个非 AAC 文件（${badAll.slice(0, 3).join("、")}${badAll.length > 3 ? "…" : ""}）。直通仅支持 AAC，请改用重新编码或先转码`;
-      err.classList.remove("hidden");
-    } else {
-      err.classList.add("hidden");
-    }
-  }
   ["split-off", "split-on", "audio-enc", "audio-copy"].forEach((id) => {
     $(id).addEventListener("change", () => {
       syncMergeModeUi();
