@@ -164,6 +164,15 @@ def main():
             "[...document.querySelectorAll('#lib-list .name-cell')]"
             ".some(e => e.textContent.includes('ch3.flac'))", timeout=10000)
         pg2.evaluate("state.uploads = []")   # isolate: only the library file
+        # 表头全选/清除（书库文件行）
+        pg2.evaluate("document.getElementById('lib-sel-all').click()")
+        pg2.wait_for_timeout(200)
+        ok("F3b: 书库全选", pg2.evaluate(
+            "[...document.querySelectorAll('#lib-list input.libpick')].every(cb=>cb.checked)"))
+        pg2.evaluate("document.getElementById('lib-sel-all').click()")
+        pg2.wait_for_timeout(200)
+        ok("F3b: 书库清除选择", pg2.evaluate(
+            "[...document.querySelectorAll('#lib-list input.libpick')].every(cb=>!cb.checked)"))
         pg2.locator('#lib-list input.libpick[data-libid*="ch3.flac"]').check()
         pg2.select_option("#preset", "audiobook_opus_48k")
         pg2.click("#btn-start")

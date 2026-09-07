@@ -1482,7 +1482,7 @@ function renderLibTable(data) {
 
   const libVis = LIB_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
     !(c.key in state.columns) || state.columns[c.key]);
-  head.innerHTML = `<th class="nosort"></th><th class="nosort"></th>` +
+  head.innerHTML = `<th class="nosort"><input type="checkbox" id="lib-sel-all" class="sel-cb" aria-label="全选/清除选择"></th><th class="nosort"></th>` +
     libVis.map((c) => {
       let arrow = "", as = "";
       if (state.libSort.key === c.key) {
@@ -1527,6 +1527,22 @@ function renderLibTable(data) {
       renderLibTable(data);   // re-render with metadata
     }).catch(() => {});
   }
+  const selAll = $("lib-sel-all");
+  const syncLibSelAll = () => {
+    if (!selAll) return;
+    const all = tbody.querySelectorAll("input.libpick");
+    const checked = tbody.querySelectorAll("input.libpick:checked");
+    selAll.checked = all.length > 0 && checked.length === all.length;
+    selAll.indeterminate = checked.length > 0 && !selAll.checked;
+  };
+  if (selAll) {
+    selAll.onchange = () => {
+      tbody.querySelectorAll("input.libpick").forEach((cb) => {
+        cb.checked = selAll.checked;
+      });
+      syncLibSelAll();
+    };
+  }
   const sorted = sortLibFiles(data.files);
   for (const f of sorted) {
     const m = libRowMeta(f);
@@ -1552,9 +1568,11 @@ function renderLibTable(data) {
       `<td class="up-acts"></td>`;
     tr.querySelector("input").addEventListener("change", (e) => {
       toggleLibFile({ id: f.id, name: f.name, size: f.size }, e.target.checked);
+      syncLibSelAll();
     });
     tbody.appendChild(tr);
   }
+  syncLibSelAll();
 }
 
 function toggleLibFile(f, add) {
