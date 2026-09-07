@@ -170,6 +170,27 @@ def main():
            pg.evaluate("state.uploadsAll.every(u=>u.referenced)"),
            str(pg.evaluate("state.uploadsAll.map(u=>u.referenced)")))
         # 等任务结束 → 引用解除 → 再删除全部
+        # 表头全选/清除选择
+        pg.evaluate("""() => {
+          const sa = document.getElementById('up-sel-all');
+          sa.checked = true; sa.dispatchEvent(new Event('change'));
+        }""")
+        _n_all = pg.evaluate(
+            "document.querySelectorAll('#uploads-list input.up-pick:checked').length")
+        _n_dis = pg.evaluate(
+            "document.querySelectorAll('#uploads-list input.up-pick:disabled').length")
+        _ok_all = pg.evaluate("""(() => {
+          const en = [...document.querySelectorAll('#uploads-list input.up-pick:not(:disabled)')];
+          return en.every(cb => cb.checked);
+        })()""")
+        ok("已上传 tab：全选（所有可勾选行被选中，🔒 不可选）", _ok_all,
+           f"checked={_n_all} disabled={_n_dis}")
+        pg.evaluate("""() => {
+          const sa = document.getElementById('up-sel-all');
+          sa.checked = false; sa.dispatchEvent(new Event('change'));
+        }""")
+        ok("已上传 tab：清除选择", pg.evaluate(
+            "document.querySelectorAll('#uploads-list input.up-pick:checked').length") == 0)
         pg.wait_for_function(
             "!Object.values(state.jobs).some(j=>j.status==='running')", timeout=180000)
         pg.click('.tab[data-tab="uploads"]')

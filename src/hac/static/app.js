@@ -843,7 +843,7 @@ function renderUploadsLibrary() {
 
   const upVis = UP_COLUMNS.filter((c) => c.key === "name" || c.key === "ext" ||
     !(c.key in state.columns) || state.columns[c.key]);
-  head.innerHTML = `<th class="nosort"></th><th class="nosort"></th>` +
+  head.innerHTML = `<th class="nosort"><input type="checkbox" id="up-sel-all" class="sel-cb" aria-label="全选/清除选择"></th><th class="nosort"></th>` +
     upVis.map((c) => {
       let arrow = "", as = "";
       if (state.upSort.key === c.key) {
@@ -912,16 +912,37 @@ function renderUploadsLibrary() {
       refreshUploadsLibrary();
     };
   });
+  // 表头全选/清除：只作用于可勾选（未被 🔒 禁用）的行
+  const selAll = $("up-sel-all");
+  const syncSelAll = () => {
+    if (!selAll) return;
+    const all = tbody.querySelectorAll("input.up-pick:not(:disabled)");
+    const checked = tbody.querySelectorAll("input.up-pick:checked");
+    selAll.checked = all.length > 0 && checked.length === all.length;
+    selAll.indeterminate = checked.length > 0 && !selAll.checked;
+  };
+  const syncBatchBtn = () => {
+    const n = tbody.querySelectorAll("input.up-pick:checked").length;
+    const btn = $("btn-batch");
+    if (btn) btn.disabled = n === 0;
+  };
+  if (selAll) {
+    selAll.onchange = () => {
+      tbody.querySelectorAll("input.up-pick:not(:disabled)").forEach((cb) => {
+        cb.checked = selAll.checked;
+      });
+      syncSelAll();
+      syncBatchBtn();
+    };
+    syncSelAll();
+  }
   tbody.querySelectorAll("input.up-pick").forEach((cb) => {
     cb.addEventListener("change", () => {
-      const n = tbody.querySelectorAll("input.up-pick:checked").length;
-      const btn = $("btn-batch");
-      if (btn) btn.disabled = n === 0;
+      syncBatchBtn();
+      syncSelAll();
     });
   });
-  const n = tbody.querySelectorAll("input.up-pick:checked").length;
-  const btn = $("btn-batch");
-  if (btn) btn.disabled = n === 0;
+  syncBatchBtn();
 }
 
 function addToWorkingSet(id) {
