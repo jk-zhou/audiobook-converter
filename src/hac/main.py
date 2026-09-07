@@ -517,6 +517,8 @@ class AgentConvertRequest(BaseModel):
     book_artist: str | None = None
     composer: str | None = None
     output_pattern: str | None = None    # 仅 single
+    passthrough: bool = False            # 直通（不重编码，仅 AAC 源）
+    split_chapters: int | None = None    # 每卷 N 章分卷
     output_dir: str | None = None        # 须在 HAC_OUTPUT_ROOTS 内；给出即等完成后导出
     wait: bool = True
     timeout: float = 600.0
@@ -546,10 +548,11 @@ async def agent_convert(req: AgentConvertRequest):
         r = await create_job(JobCreate(
             mode="merge", source_ids=source_ids, preset_id=req.preset,
             title_source="inherit", title_pattern=req.output_pattern,
+            merge_split=req.split_chapters, merge_copy=req.passthrough,
             merge={"book_title": req.book_title, "book_artist": req.book_artist,
                    "composer": req.composer} if (req.book_title or req.book_artist
                                                  or req.composer) else None))
-        ids.append(r["job_id"])
+        ids.extend(r.get("job_ids") or [r["job_id"]])
     else:
         total = len(source_ids)
         for i, sid in enumerate(source_ids, start=1):

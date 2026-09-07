@@ -311,6 +311,68 @@ def main():
             "document.getElementById('ab-audio-b').duration > 0.2"))
         pg.click("#ab-close")
 
+        # ===== F10: 分卷合并（UI 全流程）=====
+        pg.click('.tab[data-tab="upload"]')
+        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=700:duration=0.3", "-c:a", "aac",
+                 "/tmp/hac-e2e/f10a.m4a"], check=True)
+        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=800:duration=0.3", "-c:a", "aac",
+                 "/tmp/hac-e2e/f10b.m4a"], check=True)
+        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "sine=frequency=900:duration=0.3", "-c:a", "aac",
+                 "/tmp/hac-e2e/f10c.m4a"], check=True)
+        pg.click("#btn-clear-files")   # 隔离本用例：清掉前面步骤遗留的文件
+        pg.wait_for_function("state.uploads.length === 0", timeout=10000)
+        pg.set_input_files("#file-input",
+                           ["/tmp/hac-e2e/f10a.m4a", "/tmp/hac-e2e/f10b.m4a",
+                            "/tmp/hac-e2e/f10c.m4a"])
+        pg.wait_for_function("state.uploads.length >= 3", timeout=30000)
+        pg.check("#merge-on")
+        pg.evaluate("document.getElementById('split-on').click()")
+        pg.fill("#merge-split", "2")
+        pg.fill("#merge-title", "分卷书")
+        ok("F10: 拆分 hint 显示", pg.evaluate(
+            "!document.getElementById('split-hint').classList.contains('hidden')"))
+        pg.click("#btn-start")
+        pg.wait_for_function(
+            "Object.values(state.jobs).filter(j=>(j.output_filename||'').startsWith('分卷书')).length >= 2",
+            timeout=30000)
+        pg.wait_for_function(
+            "Object.values(state.jobs).filter(j=>(j.output_filename||'').startsWith('分卷书')).every(j=>j.status==='done')",
+            timeout=180000)
+        _vols = [j for j in jobs(pg) if (j.get("output_filename") or "").startswith("分卷书")]
+        ok("F10: 分卷 2 任务", len(_vols) == 2, str([j["output_filename"] for j in _vols]))
+        ok("F10: 卷命名", sorted(j["output_filename"] for j in _vols) ==
+           ["分卷书_01", "分卷书_02"], str([j["output_filename"] for j in _vols]))
+        _f1 = _glob.glob(os.path.join(os.environ["E2E_DATA"], "outputs", "*_分卷书_01.m4b"))
+        ok("F10: 卷1落盘", bool(_f1))
+        _ch = ffprobe(_f1[0])
+        _nch = len(_ch.get("chapters", []))
+        ok("F10: 卷1 = 2 章", _nch == 2, str(_nch))
+
+        # ===== F11: 直通合并（aac 源）=====
+        # 直通：清列表后只放 2 个 aac（隔离早期 mp3 文件）
+        pg.click("#btn-clear-files")
+        pg.wait_for_function("state.uploads.length === 0", timeout=10000)
+        pg.set_input_files("#file-input",
+                           ["/tmp/hac-e2e/f10a.m4a", "/tmp/hac-e2e/f10b.m4a"])
+        pg.wait_for_function("state.uploads.length >= 2", timeout=30000)
+        pg.evaluate("document.getElementById('audio-copy').click()")
+        ok("F11: 直通无 AAC 错误", pg.evaluate(
+            "document.getElementById('copy-err').classList.contains('hidden')"))
+        pg.evaluate("document.getElementById('split-off').click()")
+        pg.click("#btn-start")
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>j.mode==='merge' && j.status==='done' && (j.output_filename||'').includes('直通') === false && !j.output_deleted_at && (j.merge ? j.merge.copy_audio === true : false))",
+            timeout=180000)
+        _pj = [j for j in jobs(pg)
+               if j.get("merge", {}) and j["merge"].get("copy_audio")
+               and j["status"] == "done"][-1]
+        ok("F11: 直通任务 done", _pj["status"] == "done")
+        _pf = ffprobe(_pj["output_path"])
+        ok("F11: 音频流为 copy（aac 未重编码）",
+           _pf["streams"][0]["codec_name"] == "aac")
         b.close()
 
 

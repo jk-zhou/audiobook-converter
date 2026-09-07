@@ -157,12 +157,37 @@
       </details>
 
       <fieldset id="merge-box">
-        <legend><svg class="ic" aria-hidden="true"><use href="#i-music"/></svg> 合并为一个 M4B（有声书）</legend>
+        <legend><svg class="ic" aria-hidden="true"><use href="#i-music"/></svg> 合并为 M4B（有声书）</legend>
         <label class="field checkbox">
           <input type="checkbox" id="merge-on">
-          按列表顺序合并为一个 .m4b（采用以上编码设置，内嵌章节）
+          按列表顺序合并（内嵌章节）
         </label>
         <div id="merge-fields" class="hidden">
+          <div class="field">
+            <span class="field-label">拆分</span>
+            <div class="seg" role="radiogroup" aria-label="拆分方式">
+              <input type="radio" name="merge-split-mode" id="split-off" value="off" checked>
+              <label for="split-off">单文件</label>
+              <input type="radio" name="merge-split-mode" id="split-on" value="on">
+              <label for="split-on">分卷</label>
+            </div>
+            <span class="seg-extra hidden" id="split-n-wrap">每卷
+              <input type="number" id="merge-split" min="1" step="1" value="50"
+                     class="seg-number" aria-label="每卷章节数"> 章
+            </span>
+            <p class="hint hidden" id="split-hint">每一卷在图书 App 中是一本独立的书，按文件名排序即为阅读顺序</p>
+          </div>
+          <div class="field">
+            <span class="field-label">音频</span>
+            <div class="seg" role="radiogroup" aria-label="音频处理方式">
+              <input type="radio" name="merge-audio-mode" id="audio-enc" value="enc" checked>
+              <label for="audio-enc">重新编码 · 可调参数</label>
+              <input type="radio" name="merge-audio-mode" id="audio-copy" value="copy">
+              <label for="audio-copy">直通 · 不重编码</label>
+            </div>
+            <p class="hint hidden" id="copy-note">直通模式：忽略编码参数（码率 · 采样率 · 声道 · 响度归一化），速度接近复制文件</p>
+            <p class="err-hint hidden" id="copy-err" aria-describedby="merge-audio-mode"></p>
+          </div>
           <label class="field">书名 <input id="merge-title" placeholder="默认 = 第一个文件标题"></label>
           <label class="field">作者 <input id="merge-artist" placeholder="作者 / 朗读者"></label>
           <label class="field">演播者 <input id="merge-composer" placeholder="可选（写入 ©wrt 演播者标签）"></label>

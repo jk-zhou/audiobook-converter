@@ -647,3 +647,35 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 }
 .sel-bar.hidden { display: none !important; }
 .filetable input.sel-cb { accent-color: var(--accent); }
+
+/* ---------- Merge seg controls (直通/分卷) ---------- */
+.field-label {
+  display: block; font-size: var(--fs-sm); color: var(--text2); margin-bottom: 4px;
+}
+.seg { display: inline-flex; gap: var(--s1); flex-wrap: wrap; }
+.seg input[type="radio"] {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.seg label {
+  padding: 6px 14px; min-height: 32px;
+  display: inline-flex; align-items: center;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 99px; font-size: var(--fs-sm); color: var(--text2);
+  cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.seg label:hover { border-color: var(--border-strong); color: var(--text); }
+.seg input[type="radio"]:checked + label {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent2);
+  font-weight: 600;
+}
+.seg input[type="radio"]:focus-visible + label {
+  box-shadow: var(--focus-ring);
+}
+.seg-number {
+  width: 76px; padding: 5px 8px; min-height: 0;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: var(--radius-s); color: var(--text); font-size: var(--fs-sm);
+}
+.seg-extra { font-size: var(--fs-sm); color: var(--text2); margin-left: var(--s2); }
+.warn-hint-inline { color: var(--warn); }

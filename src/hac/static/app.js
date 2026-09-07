@@ -85,6 +85,9 @@ function buildSessionPayload() {
     channels: $("channels").value,
     normalize: $("normalize").checked,
     mergeOn: $("merge-on").checked,
+    splitMode: $("split-on").checked,
+    splitN: $("merge-split").value,
+    copyAudio: $("audio-copy").checked,
     mergeTitle: $("merge-title").value,
     mergeArtist: $("merge-artist").value,
     mergeComposer: $("merge-composer").value,
@@ -184,6 +187,10 @@ function applySession(s) {
     document.querySelectorAll(".meta-dup").forEach((el) =>
       el.classList.toggle("hidden", s.mergeOn));
   }
+  if (s.splitMode) $("split-on").checked = true;
+  if (s.splitN != null) $("merge-split").value = s.splitN;
+  if (s.copyAudio) $("audio-copy").checked = true;
+  syncMergeModeUi();
   setv("merge-title", s.mergeTitle); setv("merge-artist", s.mergeArtist);
   setv("merge-composer", s.mergeComposer);
   setv("meta-title", s.metaTitle); setv("meta-artist", s.metaArtist);
@@ -1540,12 +1547,33 @@ function updateMergeHint() {
   const n = state.uploads.length;
   const mergeOn = $("merge-on").checked;
   const errCount = renderMergeHints();
-  $("merge-hint").textContent = mergeOn
-    ? `将按列表顺序合并 ${n} 个文件为一个 .m4b（采用以上编码设置）；章节名取各文件标题标签，缺省用文件名` +
-      (n < 2 ? "（⚠ 至少 2 个文件）" : "")
-    : `将为 ${n} 个文件各创建一个转码任务`;
+  let copyErr = false;
+  if (mergeOn && $("audio-copy").checked) {
+    for (const u of state.uploads) {
+      const codec = (u.info || {}).codec;
+      if (!codec || codec !== "aac") { copyErr = true; break; }
+    }
+  }
+  const splitOn = mergeOn && $("split-on").checked;
+  const splitN = parseInt($("merge-split").value, 10);
+  const splitInvalid = splitOn && !(splitN > 0);
   $("btn-start").disabled =
-    n === 0 || (mergeOn && n < 2) || (mergeOn && errCount > 0);
+    n === 0 || (mergeOn && n < 2 && !splitOn) || (mergeOn && errCount > 0) ||
+    copyErr || splitInvalid;
+  if (!mergeOn) {
+    $("merge-hint").textContent = `将为 ${n} 个文件各创建一个转码任务`;
+    return;
+  }
+  const nVols = splitOn && splitN > 0 ? Math.ceil(n / splitN) : 1;
+  const head = $("audio-copy").checked
+    ? `直通合并：不重编码，音频流原样拼接（速度接近复制）`
+    : `将按列表顺序合并 ${n} 个文件（采用以上编码设置）`;
+  const volTxt = splitOn && splitN > 0
+    ? `拆分为 ${nVols} 卷 · 每卷 ≤${splitN} 章 · 命名 ${$("merge-title").value || "书名"}_01…`
+    : `输出单个 .m4b`;
+  $("merge-hint").textContent =
+    `${head}；${volTxt}；章节名取各文件标题标签，缺省用文件名` +
+    (n < 2 && !splitOn ? "（⚠ 至少 2 个文件）" : "");
 }
 
 /* ============ merge compatibility hints ============ */
@@ -1843,6 +1871,9 @@ async function startConversion() {
     title_source: titleSource,
     title_pattern: titleSource === "pattern" ? titlePattern : null,
     output_pattern: mergeOn ? null : ($("output-pattern").value.trim() || null),
+    merge_split: (mergeOn && $("split-on").checked)
+      ? (parseInt($("merge-split").value, 10) || null) : null,
+    merge_copy: mergeOn && $("audio-copy").checked,
   };
 
   if (mergeOn) {
@@ -1853,9 +1884,21 @@ async function startConversion() {
         book_artist: $("merge-artist").value || null,
         composer: $("merge-composer").value || null,
         cover_upload_id: state.coverUploadId,
+        copy_audio: $("audio-copy").checked,
       },
     };
-    if (!(await postJob(body)).ok) return;
+    const r = await fetch("/api/jobs", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      let detail = "HTTP " + r.status;
+      try { detail = (await r.json()).detail; } catch (e) {}
+      alert("创建任务失败: " + detail);
+      return;
+    }
+    const d = await r.json();
+    if ((d.job_ids || []).length > 1) toast(`已创建 ${d.job_ids.length} 个分卷任务`);
   } else {
     for (let i = 0; i < sources.length; i++) {
       const ok = await postJob({
@@ -1942,6 +1985,46 @@ function wireSettings() {
       updateMergeHint();
       saveSession();
     }));
+  // 直通/分卷模式联动 + 即时校验
+  function syncMergeModeUi() {
+    const splitOn = $("split-on").checked;
+    $("split-n-wrap").classList.toggle("hidden", !splitOn);
+    $("split-hint").classList.toggle("hidden", !splitOn);
+    const copy = $("audio-copy").checked;
+    $("copy-note").classList.toggle("hidden", !copy);
+    validateCopySources();
+  }
+  function validateCopySources() {
+    const err = $("copy-err");
+    if (!$("audio-copy").checked || !$("merge-on").checked) {
+      err.classList.add("hidden");
+      return;
+    }
+    const unknown = [], bad = [];
+    for (const u of state.uploads) {
+      const codec = (u.info || {}).codec;
+      if (!codec) unknown.push(u.name);
+      else if (codec !== "aac") bad.push(`${u.name} (${codec})`);
+    }
+    const badAll = [...bad, ...unknown.map((n) => `${n} (未知编码)`)];
+    if (badAll.length) {
+      err.textContent = `检测到 ${badAll.length} 个非 AAC 文件（${badAll.slice(0, 3).join("、")}${badAll.length > 3 ? "…" : ""}）。直通仅支持 AAC，请改用重新编码或先转码`;
+      err.classList.remove("hidden");
+    } else {
+      err.classList.add("hidden");
+    }
+  }
+  ["split-off", "split-on", "audio-enc", "audio-copy"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      syncMergeModeUi();
+      updateMergeHint();
+      saveSession();
+    });
+  });
+  $("merge-split").addEventListener("input", () => {
+    updateMergeHint();
+    saveSession();
+  });
   $("merge-on").onchange = (e) => {
     $("merge-fields").classList.toggle("hidden", !e.target.checked);
     document.querySelectorAll(".meta-dup").forEach((el) =>
