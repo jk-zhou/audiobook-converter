@@ -122,6 +122,25 @@ def main():
         # 改为校验判定函数本身对已完成任务返回 false
         ok("F10: 诊断函数可用", pg.evaluate(
             "typeof jobSourceMissing === 'function'"))
+
+        # F11: 删除历史记录（连产物）
+        pg.wait_for_function(
+            "Object.values(state.jobs).some(j=>['done','failed','cancelled','interrupted'].includes(j.status))",
+            timeout=180000)
+        _before = pg.evaluate("Object.values(state.jobs).length")
+        _del_target = pg.evaluate("""(() => {
+          const j = Object.values(state.jobs)
+            .find(j => ['done','failed','cancelled','interrupted'].includes(j.status));
+          return j ? j.id : null;
+        })()""")
+        pg.evaluate(f"""fetch('/api/jobs/{_del_target}/record',
+          {{method: 'DELETE'}})""")
+        pg.wait_for_timeout(800)
+        ok("F11: 删除记录后列表减少", pg.evaluate(
+            "Object.values(state.jobs).length") == _before - 1,
+           f"before={_before}")
+        ok("F11: API 不再返回该记录", not pg.evaluate(
+            f"Object.keys(state.jobs).includes('{_del_target}')"))
         ok("F10: done 任务不触发诊断", pg.evaluate(
             "jobSourceMissing(Object.values(state.jobs)[0]) === false"))
 

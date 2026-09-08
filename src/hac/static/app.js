@@ -1443,9 +1443,18 @@ function displayLibPath(abs) {
   return abs.split("/").pop() || abs;
 }
 
+let _libSeq = 0;
+let _libLoading = false;
 async function libLoad(path) {
+  if (_libLoading) return;          // 防重入：长请求期间忽略重复触发
+  _libLoading = true;
+  const seq = ++_libSeq;
   const ul = $("lib-list");
+  const wrap = $("lib-list").closest(".lib-wrap");
+  if (wrap) wrap.classList.add("lib-loading");
+  ul.innerHTML = `<tr><td colspan="10" class="empty">加载中…</td></tr>`;
   try {
+    if (seq !== _libSeq) return;
     if (!path && state.libRoots.length > 1) {
       // 顶层：把每个书库根显示为一个虚拟文件夹
       state.libPath = "";
@@ -1473,6 +1482,11 @@ async function libLoad(path) {
     renderLibTable(data);
   } catch (e) {
     $("lib-path").textContent = "加载失败: " + e;
+  } finally {
+    if (seq === _libSeq) {
+      _libLoading = false;
+      if (wrap) wrap.classList.remove("lib-loading");
+    }
   }
 }
 
@@ -1746,6 +1760,9 @@ function jobCardHTML(j) {
     acts.push(`<button class="btn small subtle" data-act="listen" data-id="${j.id}">▶ 试听</button>`);
   if (j.status === "done" && !cleaned && j.source_ids.length)
     acts.push(`<button class="btn small subtle" data-act="abcmp" data-id="${j.id}">A/B 对比</button>`);
+  if (j.status !== "queued" && j.status !== "running" &&
+      j.status !== "tagging" && j.status !== "merging")
+    acts.push(`<button class="linklike danger" data-act="deljob" data-id="${j.id}">${icon("trash")} 删除记录</button>`);
   if (j.status === "failed" || j.status === "cancelled") {
     const missing = jobSourceMissing(j);
     acts.push(`<button class="btn small" data-act="retry" data-id="${j.id}" ${missing ? "disabled title=\"源文件已删除，可在已上传文件重新加入后再试\"" : ""}>↻ 重试</button>`);
@@ -1766,6 +1783,13 @@ function bindJobActions(scope) {
       const { act, id } = b.dataset;
       if (act === "dl") location.href = `/api/jobs/${id}/download`;
       else if (act === "batchout") batchOpen("outputs", [id]);
+      else if (act === "deljob") {
+        const j = state.jobs[id];
+        if (!j) return;
+        const hasFile = !j.output_deleted_at && j.output_path;
+        if (!confirm(`删除这条任务记录？${hasFile ? "产物文件将一并删除，" : ""}此操作不可恢复`)) return;
+        await fetch(`/api/jobs/${id}/record`, { method: "DELETE" });
+      }
       else if (act === "listen") playJob(id, (state.jobs[id] || {}).output_filename);
       else if (act === "abcmp") abOpen(id);
       else if (act === "retry") await fetch(`/api/jobs/${id}/retry`, { method: "POST" });

@@ -104,3 +104,21 @@ def test_db_only_jobs(jm, dbtmp):
     jm.clear_finished()
     only = jm.db_only_jobs()
     assert [j.id for j in only] == ["job00000001"]
+
+
+def test_delete_record(jm, dbtmp, tmp_path):
+    outfile = tmp_path / "a.opus"
+    outfile.write_bytes(b"x")
+    job = _job()
+    job.output_path = outfile
+    jm.add(job)
+    jm.set_status("job00000001", JobStatus.DONE)
+    # 进行中不可删
+    jm2job = _job("job00000002")
+    jm.add(jm2job)
+    assert jm.delete_record("job00000002") is False
+    assert jm.delete_record("job00000001") is True
+    assert not outfile.exists()                       # 产物随删
+    assert db.get_job_record("job00000001") is None   # DB 行删除
+    assert "job00000001" not in jm.jobs               # 内存移除
+    assert jm.delete_record("job00000001") is False

@@ -155,6 +155,14 @@ def list_job_records() -> list[JobRecord]:
         return list(s.exec(select(JobRecord)).all())
 
 
+def delete_job_record(job_id: str) -> None:
+    with DBSession(get_engine()) as s:
+        row = s.get(JobRecord, job_id)
+        if row:
+            s.delete(row)
+            s.commit()
+
+
 def mark_output_deleted(job_id: str) -> None:
     with DBSession(get_engine()) as s:
         row = s.get(JobRecord, job_id)

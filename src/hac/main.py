@@ -54,7 +54,7 @@ curl -s http://HOST:8000/api/jobs/{id}
 curl -sOJ http://HOST:8000/api/jobs/{id}/download
 """
 from .jobs import JobManager
-from .models import DEFAULT_CODEC, Job, JobCreate, JobStatus
+from .models import ACTIVE_STATUSES, DEFAULT_CODEC, Job, JobCreate, JobStatus
 from .events import sse_endpoint
 from .transcoder import _raise_nofile
 
@@ -510,6 +510,17 @@ async def cancel_all_jobs():
 async def clear_finished_jobs():
     """清理产物：删除输出文件、历史条目永久保留。"""
     return {"ok": True, "cleaned": jm.clear_finished()}
+
+
+@app.delete("/api/jobs/{job_id}/record")
+async def delete_job_record(job_id: str):
+    """删除历史记录（终态任务）；产物文件随记录一并删除。"""
+    if job_id not in jm.jobs:
+        raise HTTPException(404, "job not found")
+    if jm.jobs[job_id].status in ACTIVE_STATUSES:
+        raise HTTPException(400, "任务进行中，先取消再删除")
+    ok = jm.delete_record(job_id)
+    return {"ok": ok}
 
 
 @app.delete("/api/jobs/{job_id}/output")

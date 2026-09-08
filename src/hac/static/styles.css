@@ -679,3 +679,17 @@ details.adv .adv-body { padding: 4px var(--s3) var(--s3); }
 }
 .seg-extra { font-size: var(--fs-sm); color: var(--text2); margin-left: var(--s2); }
 .warn-hint-inline { color: var(--warn); }
+
+/* ---------- Library loading (Task: 反馈与防重入) ---------- */
+.lib-wrap { position: relative; transition: opacity .15s ease; }
+.lib-wrap.lib-loading { opacity: .45; pointer-events: none; }
+.lib-wrap.lib-loading::after {
+  content: ""; position: absolute; top: 8px; right: 10px;
+  width: 16px; height: 16px; border-radius: 99px;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  animation: lib-spin .7s linear infinite;
+}
+@keyframes lib-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .lib-wrap.lib-loading::after { animation: none; }
+}

@@ -47,6 +47,26 @@ class JobManager:
         return [db.job_record_to_job(r) for r in db.list_job_records()
                 if r.id not in mem]
 
+    def delete_record(self, job_id: str) -> bool:
+        """删除历史记录（终态任务）：连同产物文件一并移除。"""
+        job = self.jobs.get(job_id)
+        if not job or job.status in ACTIVE_STATUSES:
+            return False
+        if job.output_path:
+            try:
+                job.output_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self.jobs.pop(job_id, None)
+        self._last_progress.pop(job_id, None)
+        self.procs.pop(job_id, None)
+        try:
+            db.delete_job_record(job_id)
+        except Exception:
+            pass
+        self.broadcast_list()
+        return True
+
     def delete_output(self, job_id: str) -> bool:
         job = self.jobs.get(job_id)
         if not job:
