@@ -111,7 +111,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Audiobook Converter", lifespan=lifespan)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+class RevalidatingStaticFiles(StaticFiles):
+    """静态资源始终要求浏览器回源验证（ETag 未变则 304）——
+    否则浏览器启发式缓存会在升级后继续用旧 JS/CSS。"""
+
+    async def get_response(self, path: str, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC_DIR)),
+          name="static")
 
 
 @app.get("/")
